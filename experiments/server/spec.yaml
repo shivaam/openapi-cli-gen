@@ -1,0 +1,547 @@
+openapi: "3.1.0"
+info:
+  title: Test API
+  description: A test API covering all complexity levels for openapi-cli-gen prototyping
+  version: "0.1.0"
+
+servers:
+  - url: http://localhost:8000
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    # === SIMPLE: flat fields only ===
+    Tag:
+      type: object
+      required: [name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    # === NESTED 1 LEVEL: address inside user ===
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+
+    UserCreate:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        age:
+          type: integer
+          minimum: 0
+          maximum: 150
+        role:
+          type: string
+          enum: [admin, user, viewer]
+          default: user
+        address:
+          $ref: "#/components/schemas/Address"
+        tags:
+          type: array
+          items:
+            type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        age:
+          type: integer
+        role:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UserList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+
+    # === NESTED 2 LEVELS: company.address.city ===
+    Company:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        website:
+          type: string
+          format: uri
+        address:
+          $ref: "#/components/schemas/Address"
+        ceo:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+
+    # === NESTED 3+ LEVELS: deep config ===
+    RetryConfig:
+      type: object
+      properties:
+        max_attempts:
+          type: integer
+          default: 3
+        backoff:
+          type: object
+          properties:
+            strategy:
+              type: string
+              enum: [linear, exponential]
+            initial_delay_ms:
+              type: integer
+            max_delay_ms:
+              type: integer
+
+    JobConfig:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        parallelism:
+          type: integer
+          default: 1
+        retry:
+          $ref: "#/components/schemas/RetryConfig"
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+
+    # === NULLABLE fields (3.1 style) ===
+    NullableExample:
+      type: object
+      properties:
+        required_field:
+          type: string
+        nullable_string:
+          type: ["string", "null"]
+        nullable_ref:
+          oneOf:
+            - $ref: "#/components/schemas/Address"
+            - type: "null"
+
+    # === ARRAY OF OBJECTS ===
+    OrderItem:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          format: float
+
+    OrderCreate:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        notes:
+          type: string
+        shipping_address:
+          $ref: "#/components/schemas/Address"
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        customer_id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        total:
+          type: number
+        status:
+          type: string
+          enum: [pending, confirmed, shipped, delivered, cancelled]
+        created_at:
+          type: string
+          format: date-time
+
+    # === DISCRIMINATED UNION (rare but should test) ===
+    NotificationEmail:
+      type: object
+      required: [type, to, subject]
+      properties:
+        type:
+          type: string
+          const: email
+        to:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+
+    NotificationSMS:
+      type: object
+      required: [type, phone]
+      properties:
+        type:
+          type: string
+          const: sms
+        phone:
+          type: string
+        message:
+          type: string
+
+    Notification:
+      oneOf:
+        - $ref: "#/components/schemas/NotificationEmail"
+        - $ref: "#/components/schemas/NotificationSMS"
+      discriminator:
+        propertyName: type
+        mapping:
+          email: "#/components/schemas/NotificationEmail"
+          sms: "#/components/schemas/NotificationSMS"
+
+    # === SIMPLE error ===
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # === TAG: users (CRUD) ===
+  /users:
+    get:
+      operationId: list_users
+      tags: [users]
+      summary: List all users
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, user, viewer]
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+    post:
+      operationId: create_user
+      tags: [users]
+      summary: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/{user_id}:
+    get:
+      operationId: get_user
+      tags: [users]
+      summary: Get a user by ID
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: update_user
+      tags: [users]
+      summary: Update a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: delete_user
+      tags: [users]
+      summary: Delete a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: User deleted
+
+  # === TAG: orders (array of objects in body) ===
+  /orders:
+    get:
+      operationId: list_orders
+      tags: [orders]
+      summary: List orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, shipped, delivered, cancelled]
+        - name: customer_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: create_order
+      tags: [orders]
+      summary: Create an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderCreate"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{order_id}:
+    get:
+      operationId: get_order
+      tags: [orders]
+      summary: Get an order
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  # === TAG: companies (2-level nesting) ===
+  /companies:
+    post:
+      operationId: create_company
+      tags: [companies]
+      summary: Create a company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Company"
+      responses:
+        "201":
+          description: Company created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+
+  # === TAG: jobs (3-level nesting) ===
+  /jobs:
+    post:
+      operationId: create_job
+      tags: [jobs]
+      summary: Create a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobConfig"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobConfig"
+    get:
+      operationId: list_jobs
+      tags: [jobs]
+      summary: List jobs
+      responses:
+        "200":
+          description: Job list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobConfig"
+
+  # === TAG: notifications (discriminated union) ===
+  /notifications:
+    post:
+      operationId: send_notification
+      tags: [notifications]
+      summary: Send a notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Notification"
+      responses:
+        "200":
+          description: Notification sent
+
+  # === TAG: tags (simple, flat) ===
+  /tags:
+    get:
+      operationId: list_tags
+      tags: [tags]
+      summary: List all tags
+      responses:
+        "200":
+          description: Tag list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+    post:
+      operationId: create_tag
+      tags: [tags]
+      summary: Create a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tag"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
