@@ -9,6 +9,7 @@ import httpx
 
 from openapi_cli_gen.spec.loader import load_spec
 from openapi_cli_gen.spec.parser import parse_spec, extract_security_schemes
+from openapi_cli_gen.engine.models import generate_models_from_spec
 from openapi_cli_gen.engine.registry import build_registry, CommandInfo
 from openapi_cli_gen.engine.dispatch import dispatch
 from openapi_cli_gen.engine.auth import build_auth_config
@@ -23,7 +24,7 @@ def build_cli(
     """Build a CLI application from an OpenAPI spec.
 
     Args:
-        spec: Path to OpenAPI spec file.
+        spec: Path to OpenAPI spec file or URL.
         name: CLI name (used for help text and env var prefix).
         base_url: Override the API base URL. If None, uses first server from spec.
 
@@ -34,7 +35,13 @@ def build_cli(
     resolved = load_spec(spec_path)
     endpoints = parse_spec(resolved)
     security_schemes = extract_security_schemes(resolved)
-    registry = build_registry(endpoints)
+
+    # Generate models from spec (uses datamodel-code-generator with disk caching)
+    generated_models = {}
+    if not spec_path.startswith(("http://", "https://")):
+        generated_models = generate_models_from_spec(spec_path)
+
+    registry = build_registry(endpoints, generated_models=generated_models)
     auth_state = build_auth_config(name, security_schemes)
 
     if base_url is None:
@@ -144,7 +151,12 @@ def build_command_group(
     resolved = load_spec(spec_path)
     endpoints = parse_spec(resolved)
     security_schemes = extract_security_schemes(resolved)
-    registry = build_registry(endpoints)
+
+    generated_models = {}
+    if not spec_path.startswith(("http://", "https://")):
+        generated_models = generate_models_from_spec(spec_path)
+
+    registry = build_registry(endpoints, generated_models=generated_models)
     auth_state = build_auth_config(name, security_schemes)
 
     if base_url is None:
