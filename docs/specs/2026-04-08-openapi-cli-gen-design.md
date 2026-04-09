@@ -65,7 +65,7 @@ Our library (`openapi-cli-gen`) is a **runtime dependency** of the generated pac
 - Generated code is minimal and stable
 - Models are the only generated Python code (via `datamodel-code-generator`)
 
-**Output format heuristic:** < 50 endpoints generates a single `cli.py` file. >= 50 endpoints generates a full package structure. User can override with `--output-format single|package`.
+**Output:** Always generates a package structure (spec.yaml + models.py + cli.py minimum). Simple and consistent.
 
 **Versioning:** Each `generate` run produces a fresh snapshot. No merging with previous generations. Providers port customizations manually between versions.
 
@@ -268,7 +268,7 @@ openapi-cli-gen generate \
   --spec api.yaml \              # file path or URL (required)
   --name mycli \                 # CLI/package name (required)
   --output ./mycli \             # output directory (default: ./{name})
-  --output-format single|package # auto-detect based on endpoint count
+  # always generates a package structure
   --python-version 3.10          # minimum python version for generated code
   --custom-templates ./templates # override Jinja2 templates
 
@@ -315,34 +315,33 @@ def import_data(file: str):
 
 ### `build_command_group()` — "Plug API commands into my existing CLI"
 
-For providers who already have a CLI with custom commands. Returns a mountable command group.
+For providers who already have a CLI with custom commands. Returns a mountable argparse subparser group.
 
 ```python
-import typer
+import argparse
 from openapi_cli_gen import build_command_group
 
-app = typer.Typer()  # their existing CLI
+parser = argparse.ArgumentParser(prog="mycli")
+subparsers = parser.add_subparsers()
 
 # Their custom commands (already existed)
-@app.command()
-def login(): ...
-
-@app.command()
-def lint_config(): ...
+login_parser = subparsers.add_parser("login")
+lint_parser = subparsers.add_parser("lint-config")
 
 # Plug in auto-generated API commands
-api = build_command_group(spec="spec.yaml")
-app.add_typer(api, name="api")
-# Now: mycli api users list, mycli api dags trigger
+build_command_group(spec="spec.yaml", subparsers=subparsers)
+# Now: mycli users list, mycli dags trigger
 # Alongside: mycli login, mycli lint-config
 ```
+
+Note: v0.1 uses pydantic-settings (argparse-based). Typer/Click composition is a Phase 2 goal once we add a Typer output target.
 
 ### Why both?
 
 | | `build_cli()` | `build_command_group()` |
 |---|---|---|
 | Use case | New CLI from scratch | Extend existing CLI |
-| Returns | Full CLI app (entry point) | Mountable command group |
+| Returns | Full CLI app (entry point) | Adds commands to existing argparse parser |
 | Example | Startup shipping API CLI | Airflow adding API commands to airflowctl |
 | Custom commands | Add to the generated app | Already have them, plug in API commands |
 
