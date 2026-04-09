@@ -54,6 +54,21 @@ Auth schemes: 2
   ...
 ```
 
+### Try It Right Now
+
+Copy-paste these — they use public OpenAPI specs, no signup needed:
+
+```bash
+# Swagger Petstore (19 endpoints, 3 groups)
+openapi-cli-gen inspect --spec https://petstore3.swagger.io/api/v3/openapi.json
+
+# Redocly Museum API (8 endpoints, OpenAPI 3.1)
+openapi-cli-gen inspect --spec https://raw.githubusercontent.com/Redocly/museum-openapi-example/main/openapi.yaml
+
+# Open-Meteo Weather API
+openapi-cli-gen inspect --spec https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml
+```
+
 ## Tested Against Real APIs
 
 We don't just test against toy specs. Here's what works today.
