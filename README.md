@@ -107,18 +107,45 @@ airflow Connection delete --connection-id my-db
 | PATCH | 1 | Pass |
 | DELETE | 3 | All pass |
 
-### Swagger Petstore (19 endpoints)
+### Cat Fact API (live, no auth)
 
 ```bash
+catfact Facts get-random
+# → {"fact": "Cats often overreact to unexpected stimuli...", "length": 94}
+
+catfact Breeds get --limit 5 --output-format table
+```
+```
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ breed          ┃ country       ┃ origin         ┃ coat       ┃ pattern       ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Abyssinian     │ Ethiopia      │ Natural/Stand… │ Short      │ Ticked        │
+│ Aegean         │ Greece        │ Natural/Stand… │ Semi-long  │ Bi- or tri-…  │
+│ American Curl  │ United States │ Mutation       │ Short/Long │ All           │
+│ American       │ United States │ Mutation       │ Short/Long │ All           │
+│ Bobtail        │               │                │            │               │
+│ American       │ United States │ Natural        │ Short      │ All but       │
+│ Shorthair      │               │                │            │ colorpoint    │
+└────────────────┴───────────────┴────────────────┴────────────┴───────────────┘
+```
+
+### Also Parsed Successfully
+
+```bash
+# Swagger Petstore (19 endpoints, 3 groups)
 openapi-cli-gen inspect --spec https://petstore3.swagger.io/api/v3/openapi.json
-# → 19 endpoints, 3 groups (pet, store, user), 2 auth schemes
-```
 
-### Open-Meteo Weather API
+# Redocly Museum API (8 endpoints, OpenAPI 3.1)
+openapi-cli-gen inspect --spec https://raw.githubusercontent.com/Redocly/museum-openapi-example/main/openapi.yaml
 
-```bash
+# Open-Meteo Weather API
 openapi-cli-gen inspect --spec https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml
+
+# ReqRes.in (40 endpoints)
+openapi-cli-gen inspect --spec https://reqres.in/openapi.json
 ```
+
+**Total: 182 endpoints across 6 APIs, all specs parsed successfully.**
 
 ## The Core Feature: Nested Model Flattening
 
