@@ -31,7 +31,19 @@ def build_registry(
         cmd_name = _derive_command_name(ep)
         model = _build_command_model(ep, model_cache)
 
-        registry.setdefault(group, {})[cmd_name] = CommandInfo(
+        # Handle name collisions: if command name already exists in group,
+        # use the full operationId as kebab-case fallback
+        group_cmds = registry.setdefault(group, {})
+        if cmd_name in group_cmds:
+            # Rename the existing one too if it hasn't been renamed yet
+            existing = group_cmds[cmd_name]
+            existing_full = _to_kebab(re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", existing.endpoint.operation_id).lower())
+            if existing_full != cmd_name:
+                group_cmds[existing_full] = existing
+                del group_cmds[cmd_name]
+            cmd_name = _to_kebab(re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", ep.operation_id).lower())
+
+        group_cmds[cmd_name] = CommandInfo(
             model=model,
             endpoint=ep,
         )
@@ -118,7 +130,14 @@ def _build_command_model(
         py_type = TYPE_MAP.get(p.type, str)
         if not p.required:
             py_type = py_type | None
-        default = p.default if p.default is not None else (None if not p.required else ...)
+        default = p.default
+        # Guard: skip defaults that don't match the type (e.g., list default for string field)
+        if default is not None and not isinstance(default, (str, int, float, bool)):
+            default = None
+        if default is None and not p.required:
+            default = None
+        elif default is None and p.required:
+            default = ...
         fields[p.name] = (py_type, FieldInfo(default=default))
 
     # Body schema → merge fields from schema_to_model
