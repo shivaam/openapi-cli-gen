@@ -25,17 +25,19 @@ def generate(
     typer.echo(f"Generated CLI package at: {result}")
 
 
-@app.command()
+@app.command(
+    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
+)
 def run(
+    ctx: typer.Context,
     spec: str = typer.Option(..., help="Path to OpenAPI spec file or URL"),
     base_url: str = typer.Option(None, help="Override API base URL"),
-    args: list[str] = typer.Argument(None, help="Command args: <group> <command> [--flags]"),
 ):
     """Run a CLI directly from an OpenAPI spec (no code generation)."""
     from openapi_cli_gen import build_cli
 
     cli = build_cli(spec=spec, name="cli", base_url=base_url)
-    cli(args or [])
+    cli(ctx.args or [])
 
 
 @app.command()
