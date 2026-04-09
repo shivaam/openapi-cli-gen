@@ -33,10 +33,10 @@ Point at any public API — no setup, no files needed:
 
 ```bash
 # Get a random cat fact
-openapi-cli-gen run --spec https://catfact.ninja/docs Facts get-random --base-url https://catfact.ninja
+openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja Facts get-random
 
 # Browse cat breeds as a table
-openapi-cli-gen run --spec https://catfact.ninja/docs Breeds get --limit 5 --output-format table --base-url https://catfact.ninja
+openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja Breeds get --limit 5 --output-format table
 ```
 ```
 ┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
@@ -122,7 +122,7 @@ Also parsed: Petstore (19 endpoints), ReqRes (40), Redocly Museum (8), Open-Mete
 
 ## Status
 
-Early release (v0.0.1). Core features work. [Issues and feedback welcome.](https://github.com/shivaam/openapi-cli-gen/issues)
+Early release. Core features work. [Issues and feedback welcome.](https://github.com/shivaam/openapi-cli-gen/issues)
 
 ## License
 
