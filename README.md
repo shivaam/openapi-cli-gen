@@ -208,6 +208,53 @@ Working CLI in seconds
 - Bearer token and API key authentication
 - JSON, YAML, table (rich), and raw output formats
 
+## Tested Against
+
+We test against real-world APIs, not just toy specs.
+
+### Apache Airflow REST API (111 endpoints, 139 schemas)
+
+Live tested against Airflow 3.2.0 running in Breeze. Full CRUD lifecycle validated:
+
+| Operation | Examples | Status |
+|---|---|---|
+| **GET** (19 endpoints) | List DAGs, pools, connections, variables, providers, plugins, jobs, event logs, DAG runs | All pass |
+| **POST** (4 endpoints) | Create connection, pool, variable, trigger DAG run (with datetime params) | All pass |
+| **PATCH** (1 endpoint) | Update connection (host, description) | Pass |
+| **DELETE** (3 endpoints) | Delete connection, pool, variable | All pass |
+
+```bash
+# Real commands that work against live Airflow:
+airflow Connection post --connection-id my-db --conn-type postgres --host db.example.com --port 5432
+airflow Connection patch --connection-id my-db --conn-type postgres --host new-host.example.com
+airflow DagRun trigger-dag-run --dag-id my_dag --logical-date 2026-04-09T12:00:00+00:00
+airflow Pool post --name my-pool --slots 10 --description "Created via CLI"
+airflow Variable post --key my-var --value hello-world
+airflow DAG get-dags --limit 5
+airflow Connection delete --connection-id my-db
+```
+
+### Swagger Petstore (19 endpoints, 6 schemas)
+
+Parsed and CLI generated from remote URL:
+
+```bash
+openapi-cli-gen inspect --spec https://petstore3.swagger.io/api/v3/openapi.json
+# → 19 endpoints, 3 groups (pet, store, user), 2 auth schemes
+```
+
+### Open-Meteo Weather API (1 endpoint)
+
+Loaded from remote GitHub URL:
+
+```bash
+openapi-cli-gen inspect --spec https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml
+```
+
+### Custom Test API (14 endpoints, 16 schemas)
+
+Full test suite with nested models up to depth 3, arrays of objects, dicts, enums, discriminated unions, nullable fields. All pass with both our test server and unit tests (50 tests).
+
 ## Status
 
 Early release (v0.0.1). Core features work. Roadmap includes Typer output target (rich `--help`, shell completion), auto-pagination, OAuth2, and more.
