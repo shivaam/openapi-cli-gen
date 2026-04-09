@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openapi-cli-gen"
-version = "0.0.1"
+version = "0.0.2"
 description = "Generate typed Python CLIs from OpenAPI specs with Pydantic model flattening into CLI flags"
 readme = "README.md"
 license = "MIT"
@@ -34,18 +34,17 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.0",
     "jinja2>=3.1",
+    "typer>=0.12",
+    "datamodel-code-generator>=0.56",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "datamodel-code-generator>=0.56",
     "ruff>=0.4",
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    "typer>=0.12",
     "pydanclick>=0.5",
     "pytest>=8.0",
-    "jinja2>=3.1",
 ]
 
 [project.scripts]
