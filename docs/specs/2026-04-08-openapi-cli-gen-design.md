@@ -283,11 +283,76 @@ openapi-cli-gen inspect \
   --spec api.yaml                # file path or URL (required)
 ```
 
+## Integration Modes
+
+Our library exposes two public functions serving different integration patterns:
+
+### `build_cli()` — "Give me a full CLI from a spec"
+
+For providers starting from scratch. Returns a complete CLI app.
+
+```python
+from openapi_cli_gen import build_cli
+app = build_cli(spec="spec.yaml", name="mycli")
+app()  # runs the CLI
+```
+
+Provider can extend with custom commands:
+
+```python
+app = build_cli(spec="spec.yaml", name="mycli")
+
+@app.command()
+def lint_config():
+    """Custom command — not an API endpoint."""
+    ...
+
+@app.command()
+def import_data(file: str):
+    """Bulk import from JSON file."""
+    ...
+```
+
+### `build_command_group()` — "Plug API commands into my existing CLI"
+
+For providers who already have a CLI with custom commands. Returns a mountable command group.
+
+```python
+import typer
+from openapi_cli_gen import build_command_group
+
+app = typer.Typer()  # their existing CLI
+
+# Their custom commands (already existed)
+@app.command()
+def login(): ...
+
+@app.command()
+def lint_config(): ...
+
+# Plug in auto-generated API commands
+api = build_command_group(spec="spec.yaml")
+app.add_typer(api, name="api")
+# Now: mycli api users list, mycli api dags trigger
+# Alongside: mycli login, mycli lint-config
+```
+
+### Why both?
+
+| | `build_cli()` | `build_command_group()` |
+|---|---|---|
+| Use case | New CLI from scratch | Extend existing CLI |
+| Returns | Full CLI app (entry point) | Mountable command group |
+| Example | Startup shipping API CLI | Airflow adding API commands to airflowctl |
+| Custom commands | Add to the generated app | Already have them, plug in API commands |
+
+Both call the same core engine. Zero code duplication.
+
 ## Project Structure
 
 ```
 src/openapi_cli_gen/
-  __init__.py              # Public API: build_cli(), generate(), run()
+  __init__.py              # Public API: build_cli(), build_command_group(), generate(), run()
   cli.py                   # Our tool's own CLI (Typer)
   config.py                # GenerateConfig Pydantic model
   spec/
@@ -312,6 +377,8 @@ src/openapi_cli_gen/
 ## MVP Scope
 
 ### In scope (v0.1):
+- `build_cli()` — full CLI from spec (public API)
+- `build_command_group()` — mountable command group for existing CLIs (public API)
 - `generate` command producing a working CLI package
 - `run` command for instant CLI from spec
 - `inspect` command (dry run)
