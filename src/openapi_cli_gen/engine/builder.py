@@ -66,7 +66,7 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
     ep = cmd_info.endpoint
 
     def cli_cmd(self):
-        data = self.model_dump(exclude_none=True, by_alias=True)
+        data = self.model_dump(exclude_none=True, by_alias=True, mode="json")
 
         # Extract output format if present
         output_fmt = data.pop("output_format", "json")
@@ -77,7 +77,13 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
 
         path_params = {k: v for k, v in data.items() if k in path_names}
         query_params = {k: v for k, v in data.items() if k in query_names}
-        body = {k: v for k, v in data.items() if k not in path_names and k not in query_names}
+        # For body: exclude query params and path params UNLESS the body schema
+        # explicitly defines that field (some APIs need id in both path and body)
+        body_field_names = set()
+        if ep.body_schema:
+            body_field_names = set(ep.body_schema.get("properties", {}).keys())
+        exclude_from_body = (path_names - body_field_names) | query_names
+        body = {k: v for k, v in data.items() if k not in exclude_from_body}
 
         # Handle nested models: convert Pydantic models to dicts for JSON serialization
         body = _serialize_body(body)
@@ -103,6 +109,11 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
             except Exception:
                 print(resp.text)
             raise SystemExit(1)
+
+        # Handle 204 No Content (successful DELETE)
+        if resp.status_code == 204 or not resp.text:
+            print("Success (no content)")
+            return
 
         try:
             result = resp.json()
