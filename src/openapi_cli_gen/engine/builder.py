@@ -59,7 +59,10 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
     ep = cmd_info.endpoint
 
     def cli_cmd(self):
-        data = self.model_dump(exclude_none=True)
+        data = self.model_dump(exclude_none=True, by_alias=True)
+
+        # Extract output format if present
+        output_fmt = data.pop("output_format", "json")
 
         # Separate path params from body/query
         path_names = {p.name for p in ep.path_params}
@@ -68,6 +71,9 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         path_params = {k: v for k, v in data.items() if k in path_names}
         query_params = {k: v for k, v in data.items() if k in query_names}
         body = {k: v for k, v in data.items() if k not in path_names and k not in query_names}
+
+        # Handle nested models: convert Pydantic models to dicts for JSON serialization
+        body = _serialize_body(body)
 
         # Build URL with path params
         path = ep.path
@@ -96,11 +102,36 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         except Exception:
             result = resp.text
 
-        output = format_output(result, "json")
+        output = format_output(result, output_fmt)
         if output is not None:
             print(output)
 
     cmd_info.model.cli_cmd = cli_cmd
+
+
+def _serialize_body(body: dict) -> dict:
+    """Recursively convert Pydantic models and enums in body to JSON-serializable dicts."""
+    from enum import Enum
+    from pydantic import BaseModel
+
+    result = {}
+    for k, v in body.items():
+        if isinstance(v, BaseModel):
+            result[k] = v.model_dump(exclude_none=True)
+        elif isinstance(v, Enum):
+            result[k] = v.value
+        elif isinstance(v, dict):
+            result[k] = _serialize_body(v)
+        elif isinstance(v, list):
+            result[k] = [
+                item.model_dump(exclude_none=True) if isinstance(item, BaseModel)
+                else item.value if isinstance(item, Enum)
+                else item
+                for item in v
+            ]
+        else:
+            result[k] = v
+    return result
 
 
 def build_command_group(

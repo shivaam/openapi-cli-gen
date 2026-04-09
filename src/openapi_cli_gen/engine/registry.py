@@ -42,37 +42,54 @@ def build_registry(
 def _derive_command_name(ep: EndpointInfo) -> str:
     """Derive a CLI command name from an endpoint.
 
-    Strategy: strip the tag suffix (singular or plural) from operationId, kebab-case the rest.
-    Examples: list_users → list, create_user → create, get_user → get
+    Handles both snake_case (list_users) and camelCase (addPet) operationIds.
+    Strategy: normalize to snake_case, strip tag suffix/prefix, kebab-case result.
+
+    Examples:
+        list_users (tag=users) → list
+        create_user (tag=users) → create
+        addPet (tag=pet) → add
+        findPetsByStatus (tag=pet) → find-by-status
+        getPetById (tag=pet) → get-by-id
+        uploadFile (tag=pet) → upload-file
     """
     op_id = ep.operation_id
     tag = ep.tag
 
-    # Build variants of the tag to try stripping from the end of op_id
-    # e.g. tag="users" → try "_users", "_user"
-    # e.g. tag="companies" → try "_companies", "_company", "_companie"
+    # Normalize camelCase to snake_case first
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", op_id).lower()
+
     singular = tag.rstrip("s") if tag.endswith("s") else tag
-    suffixes_to_try = [f"_{tag}", f"_{singular}", f"_{tag}s"]
+    tag_lower = tag.lower()
+    singular_lower = singular.lower()
 
-    for suffix in suffixes_to_try:
-        if op_id.endswith(suffix):
-            remainder = op_id[: -len(suffix)]
+    # Try stripping tag variants from the end
+    for suffix in [f"_{tag_lower}", f"_{singular_lower}", f"_{tag_lower}s"]:
+        if normalized.endswith(suffix):
+            remainder = normalized[: -len(suffix)]
             if remainder:
                 return _to_kebab(remainder)
 
-    # Try stripping tag as a prefix (e.g. users_list → list)
-    for prefix in [f"{tag}_", f"{singular}_"]:
-        if op_id.startswith(prefix):
-            remainder = op_id[len(prefix):]
+    # Try stripping tag from the middle (e.g., find_pets_by_status → find_by_status)
+    for tag_word in [f"_{tag_lower}_", f"_{singular_lower}_", f"_{tag_lower}s_"]:
+        if tag_word in normalized:
+            remainder = normalized.replace(tag_word, "_", 1)
+            return _to_kebab(remainder)
+
+    # Try stripping tag as prefix
+    for prefix in [f"{tag_lower}_", f"{singular_lower}_"]:
+        if normalized.startswith(prefix):
+            remainder = normalized[len(prefix):]
             if remainder:
                 return _to_kebab(remainder)
 
-    # Try extracting just the leading verb if nothing else matched
-    for verb in ("list", "get", "create", "update", "delete", "patch", "send", "trigger"):
-        if op_id.startswith(f"{verb}_") or op_id == verb:
-            return verb
+    # Try extracting just the leading verb
+    for verb in ("list", "get", "create", "update", "delete", "patch", "send", "trigger",
+                 "add", "find", "place", "upload"):
+        if normalized.startswith(f"{verb}_") or normalized == verb:
+            return verb if normalized == verb else _to_kebab(normalized)
 
-    return _to_kebab(op_id)
+    return _to_kebab(normalized)
 
 
 def _to_kebab(name: str) -> str:
@@ -114,6 +131,9 @@ def _build_command_model(
         )
         for fname, finfo in body_model.model_fields.items():
             fields[fname] = (finfo.annotation, finfo)
+
+    # Add output_format flag to every command
+    fields["output_format"] = (str, FieldInfo(default="json", description="Output format: json, table, yaml, raw"))
 
     model_name = f"Cmd_{ep.operation_id}"
     return create_model(model_name, __doc__=ep.summary or ep.operation_id, **fields)

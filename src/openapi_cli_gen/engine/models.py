@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any
 
@@ -12,6 +13,13 @@ TYPE_MAP: dict[str, type] = {
     "number": float,
     "boolean": bool,
 }
+
+
+def to_snake_case(name: str) -> str:
+    """Convert camelCase or PascalCase to snake_case."""
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
+    return s.lower()
 
 
 def schema_to_model(
@@ -39,7 +47,14 @@ def schema_to_model(
         py_type, field_info = _property_to_field(
             field_name, prop, field_name in required_fields, name, _model_cache
         )
-        fields[field_name] = (py_type, field_info)
+        snake_name = to_snake_case(field_name)
+        if snake_name != field_name:
+            field_info = FieldInfo(
+                default=field_info.default,
+                description=field_info.description,
+                serialization_alias=field_name,
+            )
+        fields[snake_name] = (py_type, field_info)
 
     model = create_model(name, __doc__=doc or name, **fields)
     _model_cache[name] = model
@@ -72,10 +87,13 @@ def _property_to_field(
 
     # Handle dict (additionalProperties without properties)
     if prop_type == "object" and "additionalProperties" in prop:
-        value_type = TYPE_MAP.get(
-            prop.get("additionalProperties", {}).get("type", "string"), str
-        )
-        py_type = dict[str, value_type] | None
+        additional = prop.get("additionalProperties", {})
+        if isinstance(additional, bool):
+            # additionalProperties: true means any dict
+            py_type = dict[str, Any] | None
+        else:
+            value_type = TYPE_MAP.get(additional.get("type", "string"), str)
+            py_type = dict[str, value_type] | None
         return py_type, FieldInfo(default=None)
 
     # Handle array
