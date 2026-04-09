@@ -27,13 +27,14 @@ def generate(
 
 @app.command()
 def run(
-    spec: str = typer.Option(..., help="Path to OpenAPI spec file"),
+    spec: str = typer.Option(..., help="Path to OpenAPI spec file or URL"),
+    base_url: str = typer.Option(None, help="Override API base URL"),
     args: list[str] = typer.Argument(None, help="Command args: <group> <command> [--flags]"),
 ):
     """Run a CLI directly from an OpenAPI spec (no code generation)."""
     from openapi_cli_gen import build_cli
 
-    cli = build_cli(spec=spec, name="cli")
+    cli = build_cli(spec=spec, name="cli", base_url=base_url)
     cli(args or [])
 
 
