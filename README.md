@@ -17,6 +17,13 @@ mycli users create --name John --address.city NYC --address.state NY
 ## Install
 
 ```bash
+# Recommended: pipx (installs in isolated environment)
+pipx install openapi-cli-gen
+
+# Or with uv
+uv tool install openapi-cli-gen
+
+# Or in a virtual environment
 pip install openapi-cli-gen
 ```
 
