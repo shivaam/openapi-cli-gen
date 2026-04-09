@@ -37,6 +37,14 @@ def generate_package(
         template = env.get_template(template_name)
         output_path.write_text(template.render(**context))
 
-    shutil.copy2(spec, pkg_dir / "spec.yaml")
+    # Copy or download the spec file
+    spec_dest = pkg_dir / "spec.yaml"
+    if spec.startswith(("http://", "https://")):
+        import httpx
+        resp = httpx.get(spec, follow_redirects=True, timeout=30)
+        resp.raise_for_status()
+        spec_dest.write_text(resp.text)
+    else:
+        shutil.copy2(spec, spec_dest)
 
     return output
