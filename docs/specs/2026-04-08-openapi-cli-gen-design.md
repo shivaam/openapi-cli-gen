@@ -1,7 +1,7 @@
 # openapi-cli-gen Design Spec
 
-**Date:** 2026-04-08
-**Status:** Approved
+**Date:** 2026-04-08 (updated 2026-04-09 with experiment findings)
+**Status:** Approved + Validated via 14 experiments
 **Repo:** https://github.com/shivaam/openapi-cli-gen
 
 ## Problem
@@ -13,7 +13,7 @@ No tool takes an OpenAPI spec and produces a typed Python CLI where nested reque
 `openapi-cli-gen` reads an OpenAPI 3.0/3.1 spec and generates a thin Python CLI package where:
 - Endpoints become CLI commands grouped by tag
 - Path/query params become CLI flags
-- Nested request body fields are flattened into dot-notation `--flags` (depth 2 max, then JSON fallback)
+- Nested request body fields are flattened into dot-notation `--flags`
 - Auth auto-configures from the spec's `securitySchemes`
 - Output supports JSON, table, and YAML formats
 
@@ -21,7 +21,9 @@ No tool takes an OpenAPI spec and produces a typed Python CLI where nested reque
 
 **API providers** who built a REST API (FastAPI or otherwise) and want to ship a CLI for their users. They run `openapi-cli-gen generate`, get a pip-installable CLI package, and ship it.
 
-## Two Modes
+**Secondary**: Developers who want instant CLI access to any API via `openapi-cli-gen run --spec <url>`.
+
+## Three Modes
 
 ### 1. Generate Mode (Primary)
 
@@ -65,9 +67,9 @@ Our library (`openapi-cli-gen`) is a **runtime dependency** of the generated pac
 - Generated code is minimal and stable
 - Models are the only generated Python code (via `datamodel-code-generator`)
 
-**Output:** Always generates a package structure (spec.yaml + models.py + cli.py minimum). Simple and consistent.
+**Output:** Always generates a package structure (spec.yaml + models.py + cli.py minimum).
 
-**Versioning:** Each `generate` run produces a fresh snapshot. No merging with previous generations. Providers port customizations manually between versions.
+**Versioning:** Each `generate` run produces a fresh snapshot. No merging with previous generations.
 
 ### 2. Run Mode (Convenience)
 
@@ -78,9 +80,7 @@ openapi-cli-gen run \
   --token sk-xxx
 ```
 
-Uses the same `build_cli()` engine without generating any files. Builds CLI in-memory, executes immediately. Skips model generation (uses raw dicts instead of typed Pydantic models).
-
-Good for: testing specs before codegen, quick one-off API calls, CI scripts.
+Uses the same `build_cli()` engine without generating any files. Builds CLI in-memory, executes immediately.
 
 ### 3. Inspect Mode
 
@@ -88,7 +88,7 @@ Good for: testing specs before codegen, quick one-off API calls, CI scripts.
 openapi-cli-gen inspect --spec api.yaml
 ```
 
-Shows what would be generated: endpoint count, command groups, auth schemes detected, model count. Dry run without writing files.
+Shows what would be generated: endpoint count, command groups, auth schemes detected, model count.
 
 ## Architecture
 
@@ -98,13 +98,13 @@ Shows what would be generated: endpoint count, command groups, auth schemes dete
                     |                        |
 User's OpenAPI ---->|    Core Engine          |
   spec (yaml/json)  |                        |
-                    |  1. Load + resolve refs |  jsonref
-                    |  2. Parse into typed    |  openapi-pydantic
+                    |  1. Load + resolve refs |  jsonref (0.6ms)
+                    |  2. Parse into typed    |  openapi-pydantic (3.4ms)
                     |     Pydantic models     |
                     |  3. Group by tag        |
                     |  4. Map params to flags |
-                    |  5. Flatten nested      |
-                    |     models (depth <= 2) |
+                    |  5. Flatten nested      |  pydantic-settings CliApp
+                    |     models              |
                     |  6. Extract auth        |
                     |  7. Generate models     |  datamodel-code-generator
                     |                        |
@@ -121,144 +121,251 @@ User's OpenAPI ---->|    Core Engine          |
 
 ### Core Engine Pipeline
 
-**Stage 1 - Load & Resolve:**
+**Stage 1 - Load & Resolve** (validated: experiment 6):
 - Accept file path, URL, or stdin
 - Load with `yaml.safe_load()` / `json.load()`
-- Resolve all `$ref` references (local + external + circular) via `jsonref.replace_refs()`
+- Resolve all `$ref` references via `jsonref.replace_refs()` — 0.6ms
+- Handles local, external, and circular refs (circular via lazy JsonRef proxies)
 
-**Stage 2 - Parse:**
-- Parse resolved dict into typed Pydantic models via `openapi_pydantic.parse_obj()`
-- Auto-detect OpenAPI 3.0 vs 3.1
+**Stage 2 - Parse** (validated: experiment 6):
+- Parse resolved dict into typed Pydantic models via `openapi_pydantic.parse_obj()` — 3.4ms
+- Auto-detects OpenAPI 3.0 vs 3.1
+- Typed access: `spec.paths["/users"].get.operationId`, `spec.components.securitySchemes`
 
-**Stage 3 - Extract Endpoints:**
-- Group operations by `tag` -> command groups
-- Extract `operationId` -> command name (normalized to kebab-case)
-- Classify parameters: `path` -> required flag, `query` -> optional flag, `header` -> optional flag
+**Stage 3 - Extract Endpoints** (validated: experiment 6):
+- Group operations by `tag` → command groups
+- Extract `operationId` → command name (normalized to kebab-case)
+- Classify parameters: `path` → required flag, `query` → optional flag
 - Extract request body schema per endpoint
 
-**Stage 4 - Flatten:**
-- Walk each request body model's field tree:
-  - Depth 0-2: individual `--flag` with dot-notation (`--address.city`)
-  - Depth 3+: JSON fallback (`--field-json` accepts JSON string or `@file.yaml`)
-  - Array of primitives: repeated flags (`--tag a --tag b`)
-  - Array of objects: JSON input
-  - Discriminated unions: JSON fallback (rare in practice: 0 discriminators across GitHub, Stripe, Airflow, K8s APIs)
+**Stage 4 - Build Dynamic Models** (validated: experiment 13):
+- Use `pydantic.create_model()` to dynamically create Pydantic models from schemas
+- Nested BaseModel fields work with `create_model()` at all depths
+- These dynamic models work with `CliApp.run()` for automatic flag generation
 
-**Stage 5 - Auth:**
-- Read `securitySchemes` from spec
-- Wire up flags + env vars based on scheme type
+**Stage 5 - Dispatch** (validated: experiment 1b):
+- Manual dispatch layer: parse first 2 args (group + command name) ourselves
+- Look up the dynamic model from `COMMAND_REGISTRY[group][command]`
+- Call `CliApp.run(model, cli_args=remaining_flags)` for flag parsing + validation
+- pydantic-settings handles nested flattening, arrays, dicts, enums automatically
 
-**Stage 6 - Build CLI:**
-- For `generate` mode: call `datamodel-code-generator` for models, write package files
-- For `run` mode: build pydantic-settings CLI in-memory, execute
+**Stage 6 - Auth** (validated: experiment 11):
+- Separate `AuthConfig(BaseSettings)` model with `env_prefix` derived from CLI name
+- Reads `securitySchemes` from spec, wires up `--token` flag + `{NAME}_TOKEN` env var
+- Auth injected into httpx client headers before API call
+
+**Stage 7 - Execute & Format** (validated: experiment 12):
+- Make HTTP call via httpx
+- Format response as JSON (default), table (rich), YAML, or raw
+
+### Why Manual Dispatch?
+
+pydantic-settings `CliSubCommand` only supports 1 level of subcommands (validated: experiment 1). We need 2 levels (`mycli users list`). Our dispatch layer is ~30 lines that parse `group` + `command`, then delegate to `CliApp.run()` for flag handling.
+
+This keeps pydantic-settings' full power (flattening, arrays, dicts, enums, env vars) while giving us proper `mycli <group> <command>` UX.
 
 ## Dependencies
 
 ### Our library (runtime)
 
-| Dependency | Purpose | Why this one |
+| Dependency | Purpose | Validated |
 |---|---|---|
-| `jsonref` | $ref resolution (local + external + circular) | Zero deps, 83M downloads/mo, handles circular refs via lazy proxies |
-| `openapi-pydantic` | Typed access to parsed spec | Only depends on pydantic, 54M downloads/mo, auto-detects 3.0/3.1 |
-| `pydantic-settings` | CLI flag generation from models | Built-in dot-notation flattening, env var support, config file priority |
-| `httpx` | HTTP client for API calls | Async-capable, modern, 13k stars |
-| `pyyaml` | YAML spec loading + YAML output | Standard, already transitive |
-| `rich` | Table output formatting | Standard CLI library |
+| `jsonref` | $ref resolution (local + external + circular) | Exp 6: 0.6ms, circular refs work |
+| `openapi-pydantic` | Typed access to parsed spec | Exp 6: 3.4ms, all types accessible |
+| `pydantic-settings` | CLI flag generation, env vars, nested flattening | Exp 2,3,10,11,13: all perfect |
+| `httpx` | HTTP client for API calls | Exp 8: end-to-end works |
+| `pyyaml` | YAML spec loading + YAML output | Exp 12: YAML output works |
+| `rich` | Table output formatting | Exp 12: beautiful tables |
 
 ### Dev/generate time only
 
-| Dependency | Purpose |
-|---|---|
-| `datamodel-code-generator` | OpenAPI -> Pydantic v2 model generation |
-| `ruff` | Post-generation code formatting |
+| Dependency | Purpose | Validated |
+|---|---|---|
+| `datamodel-code-generator` | OpenAPI → Pydantic v2 model generation | Exp 7: 3.5s, BaseSettings works |
+| `ruff` | Post-generation code formatting | — |
 
 ### Python version
 
 3.10+
 
-## Nested Model Flattening Strategy
+## Nested Model Flattening (Validated: Experiments 2, 3, 13)
 
-Following Stainless CLI's proven design (used by OpenAI, Anthropic, Cloudflare):
+pydantic-settings handles ALL of this automatically. No custom code needed.
 
-### Tier 1: Flat fields -> simple flags
+### Flat fields → simple flags
 
 ```bash
 mycli users create --name John --age 30
 ```
 
-### Tier 2: One level of nesting -> dot notation
+### Nested depth 1 → dot notation
 
 ```bash
-mycli users create --name.first John --name.last Doe
+mycli users create --address.city NYC --address.state NY
 ```
 
-### Tier 3: Deeper nesting / complex types -> JSON fallback
+### Nested depth 2 → dot notation (still works)
 
 ```bash
-# Inline JSON
-mycli users create --address '{"street": "123 Main", "city": "NYC", "zip": "10001"}'
-
-# From file
-mycli users create --address @address.yaml
+mycli companies create --ceo.name Bob --address.city NYC
 ```
 
-### Arrays
+### Nested depth 3 → dot notation (still works, but UX degrades)
 
 ```bash
-# Primitives: repeated flags
-mycli users create --tag admin --tag reviewer
-
-# Objects: JSON
-mycli users create --items '[{"name": "x", "qty": 1}]'
+mycli jobs create --retry.backoff.strategy exponential --retry.backoff.initial-delay-ms 2000
 ```
 
-### Why depth 2 max?
+### JSON fallback (any depth)
 
-"If you want tab completion and proper --help documentation, your flags need to be defined statically, which rules out infinitely nested paths." — Stainless design docs.
+```bash
+mycli users create --address '{"city": "NYC", "state": "NY"}'
+```
 
-Depth 2 covers the vast majority of real-world APIs. Average nesting depth across GitHub, Stripe, and Airflow APIs is 1.7.
+### JSON + dot-notation mix (dot wins)
 
-## Authentication
+```bash
+mycli users create --address '{"city": "NYC"}' --address.city SF
+# Result: city=SF (dot-notation overrides JSON)
+```
 
-Auth auto-configures from the spec's `securitySchemes`. Priority: flag > env var.
+### Arrays of primitives (3 intermixable syntaxes)
+
+```bash
+--tags admin --tags reviewer       # repeated flags
+--tags '["admin", "reviewer"]'     # JSON
+--tags admin,reviewer              # comma-separated
+```
+
+### Arrays of objects → JSON
+
+```bash
+--items '{"product_id": "abc", "quantity": 2}' --items '{"product_id": "def", "quantity": 1}'
+# OR
+--items '[{"product_id": "abc", "quantity": 2}, {"product_id": "def", "quantity": 1}]'
+```
+
+### Dicts (2 syntaxes)
+
+```bash
+--environment '{"JAVA_HOME": "/usr/lib/jvm"}'     # JSON
+--environment JAVA_HOME=/usr/lib/jvm               # key=value
+```
+
+### Enums → choices with validation
+
+```bash
+--role {admin,user,viewer}   # shows choices in --help
+--role superadmin             # → ValidationError: Input should be 'admin', 'user' or 'viewer'
+```
+
+### Discriminated unions → flat flags (all variants exposed)
+
+```bash
+mycli notifications send --type email --to user@x.com --subject Hi
+mycli notifications send --type sms --phone +1234567890 --message Hello
+# --type selects which variant; irrelevant fields ignored
+```
+
+## Authentication (Validated: Experiment 11)
+
+**Pattern: Separate `AuthConfig(BaseSettings)` model.**
+
+```python
+class AuthConfig(BaseSettings):
+    model_config = {"env_prefix": "MYCLI_"}
+    token: str | None = None
+```
+
+This reads from `MYCLI_TOKEN` env var automatically. CLI `--token` flag overrides.
 
 | OpenAPI scheme | CLI flag | Env var |
 |---|---|---|
 | `http` (bearer) | `--token` | `{NAME}_TOKEN` |
 | `apiKey` (header) | `--api-key` | `{NAME}_API_KEY` |
 | `http` (basic) | `--username`, `--password` | `{NAME}_USERNAME`, `{NAME}_PASSWORD` |
-| OAuth2 | Deferred to Phase 2 | - |
+| OAuth2 | Deferred to Phase 2 | — |
 
-Env var prefix derived from CLI name: `mycli` -> `MYCLI_TOKEN`.
+## Output Formatting (Validated: Experiment 12)
 
-## Output Formatting
-
-Every command gets `--output-format`:
+~40 lines of code. Three formats:
 
 ```bash
 mycli users list                            # JSON (default, pretty-printed)
-mycli users list --output-format table      # rich table
+mycli users list --output-format table      # rich table with headers
 mycli users list --output-format yaml       # YAML
 mycli users list --output-format raw        # raw response body
 ```
 
-JSON default because it's scriptable (`| jq .`).
+Table formatter auto-detects:
+- List responses → column table
+- Wrapped lists (`{items: [...], total: N}`) → table + metadata above
+- Single objects → key/value table
+
+## Integration Modes
+
+### `build_cli()` — "Give me a full CLI from a spec"
+
+For providers starting from scratch. Returns a callable that runs the CLI.
+
+```python
+from openapi_cli_gen import build_cli
+app = build_cli(spec="spec.yaml", name="mycli")
+app()  # runs the CLI
+```
+
+Provider can extend with custom commands by modifying the generated `cli.py`.
+
+### `build_command_group()` — "Plug API commands into my existing CLI"
+
+For providers who already have a CLI. Adds auto-generated API commands to an existing argparse parser.
+
+```python
+import argparse
+from openapi_cli_gen import build_command_group
+
+parser = argparse.ArgumentParser(prog="mycli")
+subparsers = parser.add_subparsers()
+
+# Their custom commands
+login_parser = subparsers.add_parser("login")
+lint_parser = subparsers.add_parser("lint-config")
+
+# Auto-generated API commands
+build_command_group(spec="spec.yaml", subparsers=subparsers)
+# Now: mycli users list, mycli dags trigger
+# Alongside: mycli login, mycli lint-config
+```
+
+Note: v0.1 uses pydantic-settings (argparse-based). Typer/Click composition is Phase 2.
+
+## Performance (Validated: Experiment 14)
+
+| Endpoints | Startup (build registry) | Per-command execution |
+|---|---|---|
+| 14 | 5ms | 0.9ms |
+| 50 | 12ms | 1.0ms |
+| 100 | 29ms | 0.7ms |
+| 200 | 58ms | 0.8ms |
+| 500 | 135ms | 1.0ms |
+
+All well under the 200ms CLI responsiveness threshold.
 
 ## Code Generation Approach
 
 ### What's generated (by datamodel-code-generator)
-- Pydantic v2 models from request/response schemas
+- Pydantic v2 models from request/response schemas (validated: experiment 7)
 
-### What's static (copied from templates)
-- `pyproject.toml` (Jinja2 template with name/version/deps)
-- `cli.py` entry point (Jinja2 template, ~5 lines)
+### What's static (Jinja2 templates)
+- `pyproject.toml` with name/version/deps
+- `cli.py` entry point (~5 lines)
 - `__init__.py`
 
 ### Post-generation
-- `ruff check --fix && ruff format` on all generated Python files
+- `ruff check --fix && ruff format`
 
 ### Template override
-Users can provide `--custom-templates ./my-templates/` to override any template (same ChoiceLoader pattern as openapi-python-client).
+`--custom-templates ./my-templates/` (Jinja2 ChoiceLoader pattern)
 
 ## CLI Interface
 
@@ -268,14 +375,13 @@ openapi-cli-gen generate \
   --spec api.yaml \              # file path or URL (required)
   --name mycli \                 # CLI/package name (required)
   --output ./mycli \             # output directory (default: ./{name})
-  # always generates a package structure
-  --python-version 3.10          # minimum python version for generated code
+  --python-version 3.10          # minimum python version
   --custom-templates ./templates # override Jinja2 templates
 
 # Run directly without generating
 openapi-cli-gen run \
   --spec api.yaml \              # file path or URL (required)
-  [command] [subcommand] \       # the API command to run
+  [group] [command] \            # the API command to run
   [--flags]                      # endpoint-specific flags
 
 # Inspect a spec (dry run)
@@ -283,86 +389,22 @@ openapi-cli-gen inspect \
   --spec api.yaml                # file path or URL (required)
 ```
 
-## Integration Modes
-
-Our library exposes two public functions serving different integration patterns:
-
-### `build_cli()` — "Give me a full CLI from a spec"
-
-For providers starting from scratch. Returns a complete CLI app.
-
-```python
-from openapi_cli_gen import build_cli
-app = build_cli(spec="spec.yaml", name="mycli")
-app()  # runs the CLI
-```
-
-Provider can extend with custom commands:
-
-```python
-app = build_cli(spec="spec.yaml", name="mycli")
-
-@app.command()
-def lint_config():
-    """Custom command — not an API endpoint."""
-    ...
-
-@app.command()
-def import_data(file: str):
-    """Bulk import from JSON file."""
-    ...
-```
-
-### `build_command_group()` — "Plug API commands into my existing CLI"
-
-For providers who already have a CLI with custom commands. Returns a mountable argparse subparser group.
-
-```python
-import argparse
-from openapi_cli_gen import build_command_group
-
-parser = argparse.ArgumentParser(prog="mycli")
-subparsers = parser.add_subparsers()
-
-# Their custom commands (already existed)
-login_parser = subparsers.add_parser("login")
-lint_parser = subparsers.add_parser("lint-config")
-
-# Plug in auto-generated API commands
-build_command_group(spec="spec.yaml", subparsers=subparsers)
-# Now: mycli users list, mycli dags trigger
-# Alongside: mycli login, mycli lint-config
-```
-
-Note: v0.1 uses pydantic-settings (argparse-based). Typer/Click composition is a Phase 2 goal once we add a Typer output target.
-
-### Why both?
-
-| | `build_cli()` | `build_command_group()` |
-|---|---|---|
-| Use case | New CLI from scratch | Extend existing CLI |
-| Returns | Full CLI app (entry point) | Adds commands to existing argparse parser |
-| Example | Startup shipping API CLI | Airflow adding API commands to airflowctl |
-| Custom commands | Add to the generated app | Already have them, plug in API commands |
-
-Both call the same core engine. Zero code duplication.
-
 ## Project Structure
 
 ```
 src/openapi_cli_gen/
-  __init__.py              # Public API: build_cli(), build_command_group(), generate(), run()
-  cli.py                   # Our tool's own CLI (Typer)
+  __init__.py              # Public API: build_cli(), build_command_group()
+  cli.py                   # Our tool's CLI (generate/run/inspect commands)
   config.py                # GenerateConfig Pydantic model
   spec/
     loader.py              # Load spec from file/URL
     resolver.py            # jsonref $ref resolution
     parser.py              # openapi-pydantic parsing, endpoint extraction
   engine/
-    flattener.py           # Nested model -> flat flags (the core algorithm)
-    mapper.py              # Endpoints -> CLI command tree
-    auth.py                # securitySchemes -> auth config
-    builder.py             # build_cli() - assembles pydantic-settings CLI
+    registry.py            # COMMAND_REGISTRY builder from parsed spec
+    dispatch.py            # Manual dispatch: group + command → CliApp.run()
+    auth.py                # AuthConfig(BaseSettings) from securitySchemes
+    builder.py             # build_cli() / build_command_group() implementation
   codegen/
     generator.py           # Orchestrate code generation
     models.py              # Wraps datamodel-code-generator
@@ -370,7 +412,7 @@ src/openapi_cli_gen/
       cli.py.jinja2        # Entry point template
       pyproject.toml.jinja2
   output/
-    formatter.py           # JSON/table/YAML formatting
+    formatter.py           # JSON/table/YAML formatting (~40 lines)
 ```
 
 ## MVP Scope
@@ -383,23 +425,52 @@ src/openapi_cli_gen/
 - `inspect` command (dry run)
 - GET, POST, PUT, PATCH, DELETE endpoints
 - Path params, query params as flags
-- Request body flattening (depth 2 + JSON fallback)
-- Bearer token + API key auth (flag + env var)
-- Output: JSON, table, YAML
+- Request body flattening (all depths, dot-notation + JSON fallback)
+- Arrays: repeated flags (primitives) + JSON (objects)
+- Dicts: JSON + key=value
+- Enums: validated choices
+- Discriminated unions: flat flags with --type selector
+- Nullable fields: correct Optional handling
+- Bearer token + API key auth (flag + env var via AuthConfig)
+- Output: JSON, table (rich), YAML, raw
 - OpenAPI 3.0 and 3.1
-- Local and external $ref resolution
+- Local, external, and circular $ref resolution
 
-### Not in scope (later):
-- `--standalone` flag for full static codegen (no runtime dependency)
-- Typer output target (`--framework typer`)
+### Phase 2 (later):
+- `--framework typer` output target (experiment 1d validated the approach)
+- `--standalone` full static codegen (no runtime dependency)
 - OAuth2 auth flows
 - File uploads (multipart)
 - Auto-pagination
-- Shell completion
+- Shell completion (comes free with Typer target)
 - Stdin piping / template merging
-- `--transform` (GJSON-style response filtering)
-- Interactive TUI explorer (`--output-format explore`)
+- `--transform` response filtering
+- `--include-tags` / `--exclude-tags` for selective generation
+- `@file.yaml` syntax for JSON fallback fields
+- Interactive TUI explorer
 - Config file support (`mycli configure`)
+
+## Experiment Validation Summary
+
+14 experiments validated every design decision. All prototypes in `experiments/prototypes/`.
+
+| # | What | Result | Key finding |
+|---|---|---|---|
+| 1 | pydantic-settings multi-command | 1-level only | Need manual dispatch |
+| 1b | Manual dispatch | Works, 1.1ms | Clean UX, simple code |
+| 1c | Typer manual wiring | Works, 1.1ms | Beautiful but manual per-command |
+| 1d | Typer from Pydantic (dynamic) | Works, 0.7ms | Phase 2 add-on validated |
+| 2 | Nested flattening | Perfect at all depths | Dot-notation + JSON mix works |
+| 3 | Arrays/dicts/enums | All perfect | 3 list syntaxes, key=value dicts |
+| 6 | Spec parsing | 4ms total | jsonref + openapi-pydantic works |
+| 7 | Model generation | 3.5s one-time | BaseSettings output works |
+| 8 | End-to-end | Pipeline works | Command naming needs refinement |
+| 9 | Discriminated unions | Both approaches work | Flat flags approach best |
+| 10 | Nullable fields | Perfect | All patterns correct |
+| 11 | Env vars | AuthConfig(BaseSettings) wins | Separate model with env_prefix |
+| 12 | Output formatting | Beautiful | Rich tables, ~40 lines |
+| 13 | Dynamic nested models | Perfect | create_model() + CliApp works |
+| 14 | Large spec performance | 500ep in 135ms | No performance concern |
 
 ## Competitive Position
 
@@ -408,9 +479,10 @@ src/openapi_cli_gen/
 | Language | Python | TypeScript | Python | Go | Go |
 | Generates code | Yes | No | No | No | Yes |
 | Runtime mode | Yes | Yes | Yes | Yes | No |
-| Nested flattening | Depth 2 + JSON | Scalars only, skips arrays | JSON strings | No (JSON stdin) | Depth 2 + JSON |
+| Nested flattening | All depths + JSON | Scalars only | JSON strings | No | Depth 2 + JSON |
 | Typed models | Pydantic v2 | No | No | No | Go structs |
 | Auth from spec | Yes | Partial | 10 plugins | Manual | Yes |
 | Output formats | JSON/table/YAML | JSON | JSON | JSON/YAML/CBOR | JSON/YAML/explore |
+| Pluggable into existing CLI | Yes | No | No | No | No |
 | Open source | Yes | Yes | Yes | Yes | No (commercial) |
 | Status | Active | Stalled | Stalled | Active | Active |
