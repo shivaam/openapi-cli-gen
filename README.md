@@ -14,18 +14,6 @@ curl -X POST /api/users -d '{"name": "John", "address": {"city": "NYC", "state":
 mycli users create --name John --address.city NYC --address.state NY
 ```
 
-No tool existed to take an OpenAPI spec and produce a typed Python CLI where nested request bodies are flattened into individual `--flag` arguments. Until now.
-
-## Why openapi-cli-gen?
-
-- **Zero boilerplate** -- point at a spec, get a working CLI
-- **Nested model flattening** -- `--address.city NYC` not `--data '{"address":{"city":"NYC"}}'`
-- **Works at any depth** -- 1, 2, 3+ levels of nesting with automatic dot-notation
-- **Arrays, dicts, enums** -- all handled (`--tags dev --tags lead`, `--env KEY=val`, `--role {admin,user}`)
-- **Auth from your spec** -- reads `securitySchemes`, wires up `--token` + env vars automatically
-- **Two modes** -- generate a pip-installable package OR run instantly without code generation
-- **Pluggable** -- use standalone or plug API commands into your existing CLI
-
 ## Quick Start
 
 ```bash
@@ -37,27 +25,17 @@ pip install openapi-cli-gen
 ```bash
 openapi-cli-gen generate --spec https://api.example.com/openapi.json --name mycli
 cd mycli && pip install -e .
-```
-
-Now your users can:
-
-```bash
 mycli users list
 mycli users create --name John --email john@example.com --address.city NYC
-mycli jobs create --retry.backoff.strategy exponential --retry.backoff.initial-delay-ms 2000
 ```
 
 ### Run Instantly (No Code Generation)
-
-Don't want to generate files? Point directly at any spec:
 
 ```bash
 openapi-cli-gen run --spec api.yaml users list --limit 10
 ```
 
 ### Inspect a Spec
-
-See what commands would be generated before committing:
 
 ```bash
 $ openapi-cli-gen inspect --spec api.yaml
@@ -76,9 +54,60 @@ Auth schemes: 2
   ...
 ```
 
+## Tested Against Real APIs
+
+We don't just test against toy specs. Here's what works today.
+
+### Apache Airflow (111 endpoints, 139 schemas)
+
+Live tested against Airflow 3.2.0. Full CRUD — create, read, update, delete — all validated:
+
+```bash
+# Create a connection with nested fields
+airflow Connection post --connection-id my-db --conn-type postgres --host db.example.com --port 5432
+
+# Update it
+airflow Connection patch --connection-id my-db --conn-type postgres --host new-host.example.com
+
+# Trigger a DAG run with datetime params
+airflow DagRun trigger-dag-run --dag-id my_dag --logical-date 2026-04-09T12:00:00+00:00
+
+# Create resources
+airflow Pool post --name my-pool --slots 10 --description "Created via CLI"
+airflow Variable post --key my-var --value hello-world
+
+# List and query
+airflow DAG get-dags --limit 5
+airflow Provider get
+airflow Monitor get-health
+
+# Clean up
+airflow Connection delete --connection-id my-db
+```
+
+| Method | Endpoints tested | Result |
+|---|---|---|
+| GET | 19 | All pass |
+| POST | 4 | All pass |
+| PATCH | 1 | Pass |
+| DELETE | 3 | All pass |
+
+### Swagger Petstore (19 endpoints)
+
+```bash
+openapi-cli-gen inspect --spec https://petstore3.swagger.io/api/v3/openapi.json
+# → 19 endpoints, 3 groups (pet, store, user), 2 auth schemes
+```
+
+### Open-Meteo Weather API
+
+```bash
+openapi-cli-gen inspect --spec https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml
+```
+
 ## The Core Feature: Nested Model Flattening
 
-This is what makes openapi-cli-gen different from every other tool. Your API has nested request bodies -- we flatten them into ergonomic CLI flags:
+This is what no other tool does. Your API has nested request bodies — we flatten them into CLI flags at any depth:
 
 ```bash
 # Depth 1: address nested inside user
@@ -87,79 +116,42 @@ mycli users create --name John --address.city NYC --address.state NY
 # Depth 2: CEO nested inside company
 mycli companies create --name Acme --ceo.name Bob --ceo.email bob@acme.com
 
-# Depth 3: backoff nested inside retry nested inside job config
+# Depth 3: backoff config inside retry inside job
 mycli jobs create --name etl --retry.backoff.strategy exponential --retry.backoff.initial-delay-ms 2000
 
-# JSON fallback for anything complex
+# JSON fallback when you need it
 mycli users create --address '{"street": "123 Main", "city": "NYC"}'
 
-# Mix both -- dot-notation overrides JSON
-mycli users create --address '{"city": "NYC"}' --address.city SF  # city=SF wins
+# Mix both — dot-notation wins
+mycli users create --address '{"city": "NYC"}' --address.city SF  # city=SF
 ```
 
-### Arrays
+### Arrays, Dicts, Enums
 
 ```bash
-# Repeated flags for primitives
+# Arrays: repeated flags, comma-separated, or JSON
 mycli users create --tags admin --tags reviewer
-# Or comma-separated
 mycli users create --tags admin,reviewer
-# Or JSON
-mycli users create --tags '["admin", "reviewer"]'
-
-# JSON for arrays of objects
 mycli orders create --items '[{"product_id": "abc", "quantity": 2}]'
-```
 
-### Dicts
-
-```bash
-# Key=value syntax
-mycli jobs create --environment JAVA_HOME=/usr/lib/jvm --environment PATH=/usr/bin
-# Or JSON
+# Dicts: key=value or JSON
+mycli jobs create --environment JAVA_HOME=/usr/lib/jvm
 mycli jobs create --environment '{"JAVA_HOME": "/usr/lib/jvm"}'
-```
 
-### Enums
-
-```bash
-mycli users create --role admin   # choices shown in --help: {admin, user, viewer}
-mycli users create --role superadmin  # ValidationError: Input should be 'admin', 'user' or 'viewer'
-```
-
-## As a Library
-
-### Build a full CLI from a spec
-
-```python
-from openapi_cli_gen import build_cli
-
-app = build_cli(spec="openapi.yaml", name="mycli")
-app()
-```
-
-### Plug API commands into your existing CLI
-
-Already have a CLI with custom commands? Add auto-generated API commands alongside them:
-
-```python
-from openapi_cli_gen import build_command_group
-
-# Returns {group: {command: CommandInfo}}
-registry = build_command_group(spec="openapi.yaml", name="mycli")
-# Integrate with your existing argparse-based CLI
+# Enums: validated choices shown in --help
+mycli users create --role admin   # {admin, user, viewer}
 ```
 
 ## Authentication
 
-Auth auto-configures from your spec's `securitySchemes`:
+Auto-configures from your spec's `securitySchemes`:
 
 ```bash
-# Via environment variable (recommended for CI/CD)
+# Environment variable (recommended for CI/CD)
 export MYCLI_TOKEN=sk-xxx
 mycli users list
 
-# Via flag (overrides env var)
+# Flag (overrides env var)
 mycli users list --token sk-xxx
 ```
 
@@ -169,6 +161,28 @@ mycli users list --token sk-xxx
 | API key | `--api-key` | `{NAME}_API_KEY` |
 | Basic auth | `--username`, `--password` | `{NAME}_USERNAME`, `{NAME}_PASSWORD` |
 
+## As a Library
+
+### New CLI from a spec
+
+```python
+from openapi_cli_gen import build_cli
+
+app = build_cli(spec="openapi.yaml", name="mycli")
+app()
+```
+
+### Plug into your existing CLI
+
+Already have a CLI with custom commands? Add auto-generated API commands alongside them:
+
+```python
+from openapi_cli_gen import build_command_group
+
+registry = build_command_group(spec="openapi.yaml", name="mycli")
+# Returns {group: {command: CommandInfo}} — integrate with your existing argparse CLI
+```
+
 ## How It Works
 
 ```
@@ -176,13 +190,13 @@ Your OpenAPI spec (YAML/JSON)
     |
     v
 1. Load & resolve all $ref references (jsonref)
-2. Parse into typed models (openapi-pydantic)
+2. Generate typed Pydantic models (datamodel-code-generator, cached)
 3. Group endpoints by tag -> command groups
 4. Flatten request body schemas into CLI flags (pydantic-settings)
-5. Build CLI with dispatch: mycli <group> <command> --flags
+5. Build CLI: mycli <group> <command> --flags
     |
     v
-Working CLI in seconds
+Working CLI — first run ~300ms, cached ~50ms
 ```
 
 ## Compared to Alternatives
@@ -198,62 +212,26 @@ Working CLI in seconds
 | Pluggable into existing CLI | Yes | No | No | No |
 | Open source | Yes | Yes | Yes | No |
 
+## Why This Exists
+
+Every CLI framework (Click, Typer, argparse) makes you define flags manually. Every OpenAPI code generator (openapi-python-client, openapi-generator) produces HTTP client libraries, not CLIs. Nobody bridged the gap — taking nested API schemas and turning them into ergonomic `--flag` arguments.
+
+We do.
+
+- **For API providers**: ship a CLI for your users in minutes, not weeks
+- **For developers**: instant CLI access to any API with an OpenAPI spec
+- **For platform teams**: generate CLIs for 30 microservices without writing 30 CLI wrappers
+
 ## Supported
 
 - OpenAPI 3.0 and 3.1
 - All HTTP methods (GET, POST, PUT, PATCH, DELETE)
 - Local, external, and circular `$ref` resolution
 - Path parameters, query parameters, request bodies
-- Nested objects, arrays, dicts, enums, nullable fields
+- Nested objects at any depth, arrays, dicts, enums, nullable fields
 - Bearer token and API key authentication
-- JSON, YAML, table (rich), and raw output formats
-
-## Tested Against
-
-We test against real-world APIs, not just toy specs.
-
-### Apache Airflow REST API (111 endpoints, 139 schemas)
-
-Live tested against Airflow 3.2.0 running in Breeze. Full CRUD lifecycle validated:
-
-| Operation | Examples | Status |
-|---|---|---|
-| **GET** (19 endpoints) | List DAGs, pools, connections, variables, providers, plugins, jobs, event logs, DAG runs | All pass |
-| **POST** (4 endpoints) | Create connection, pool, variable, trigger DAG run (with datetime params) | All pass |
-| **PATCH** (1 endpoint) | Update connection (host, description) | Pass |
-| **DELETE** (3 endpoints) | Delete connection, pool, variable | All pass |
-
-```bash
-# Real commands that work against live Airflow:
-airflow Connection post --connection-id my-db --conn-type postgres --host db.example.com --port 5432
-airflow Connection patch --connection-id my-db --conn-type postgres --host new-host.example.com
-airflow DagRun trigger-dag-run --dag-id my_dag --logical-date 2026-04-09T12:00:00+00:00
-airflow Pool post --name my-pool --slots 10 --description "Created via CLI"
-airflow Variable post --key my-var --value hello-world
-airflow DAG get-dags --limit 5
-airflow Connection delete --connection-id my-db
-```
-
-### Swagger Petstore (19 endpoints, 6 schemas)
-
-Parsed and CLI generated from remote URL:
-
-```bash
-openapi-cli-gen inspect --spec https://petstore3.swagger.io/api/v3/openapi.json
-# → 19 endpoints, 3 groups (pet, store, user), 2 auth schemes
-```
-
-### Open-Meteo Weather API (1 endpoint)
-
-Loaded from remote GitHub URL:
-
-```bash
-openapi-cli-gen inspect --spec https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml
-```
-
-### Custom Test API (14 endpoints, 16 schemas)
-
-Full test suite with nested models up to depth 3, arrays of objects, dicts, enums, discriminated unions, nullable fields. All pass with both our test server and unit tests (50 tests).
+- JSON, YAML, table, and raw output formats
+- 50 automated tests + live API validation
 
 ## Status
 
