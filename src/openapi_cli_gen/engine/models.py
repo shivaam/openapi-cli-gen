@@ -36,13 +36,37 @@ def to_snake_case(name: str) -> str:
 
 
 def generate_models_from_spec(spec_path: str) -> dict[str, type[BaseModel]]:
-    """Generate all Pydantic models from an OpenAPI spec file.
+    """Generate all Pydantic models from an OpenAPI spec file or URL.
 
     Uses datamodel-code-generator with disk caching.
     First call: ~300ms (generate + cache). Subsequent calls: ~50ms (import from cache).
 
     Returns: dict mapping model class names to model classes.
     """
+    # Handle URL specs: download to a temp file
+    if spec_path.startswith(("http://", "https://")):
+        import httpx
+        try:
+            resp = httpx.get(spec_path, follow_redirects=True, timeout=30)
+            resp.raise_for_status()
+        except Exception:
+            return {}
+
+        content = resp.text
+        spec_hash = hashlib.md5(content.encode()).hexdigest()[:16]
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Write spec to cache dir with a predictable name based on hash
+        suffix = ".yaml" if spec_path.endswith((".yaml", ".yml")) else ".json"
+        spec_cache = CACHE_DIR / f"spec_{spec_hash}{suffix}"
+        if not spec_cache.exists():
+            spec_cache.write_text(content)
+        cache_file = CACHE_DIR / f"models_{spec_hash}.py"
+
+        if not cache_file.exists():
+            _generate_and_cache(spec_cache, cache_file)
+
+        return _load_from_cache(cache_file)
+
     path = Path(spec_path)
     if not path.exists():
         return {}

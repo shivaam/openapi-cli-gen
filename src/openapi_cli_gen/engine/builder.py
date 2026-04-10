@@ -37,9 +37,8 @@ def build_cli(
     security_schemes = extract_security_schemes(resolved)
 
     # Generate models from spec (uses datamodel-code-generator with disk caching)
-    generated_models = {}
-    if not spec_path.startswith(("http://", "https://")):
-        generated_models = generate_models_from_spec(spec_path)
+    # Works for both local files and URLs
+    generated_models = generate_models_from_spec(spec_path)
 
     registry = build_registry(endpoints, generated_models=generated_models)
     auth_state = build_auth_config(name, security_schemes)
