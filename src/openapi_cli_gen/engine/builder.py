@@ -88,6 +88,10 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         # Handle nested models: convert Pydantic models to dicts for JSON serialization
         body = _serialize_body(body)
 
+        # Parse JSON strings: if a field value looks like JSON (starts with { or [),
+        # parse it so nested objects/arrays are sent correctly to the API
+        body = _parse_json_strings(body)
+
         # Build URL with path params
         path = ep.path
         for k, v in path_params.items():
@@ -125,6 +129,28 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
             print(output)
 
     cmd_info.model.cli_cmd = cli_cmd
+
+
+def _parse_json_strings(obj):
+    """Recursively parse string values that look like JSON (start with { or [).
+
+    This lets users pass nested objects/arrays as JSON strings on the CLI:
+        --vectors '{"size": 4, "distance": "Cosine"}'
+    Without this, the string would be sent as-is instead of a parsed object.
+    """
+    if isinstance(obj, dict):
+        return {k: _parse_json_strings(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_parse_json_strings(v) for v in obj]
+    if isinstance(obj, str):
+        stripped = obj.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                return obj
+        return obj
+    return obj
 
 
 def _serialize_body(body: dict) -> dict:
