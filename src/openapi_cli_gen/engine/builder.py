@@ -112,6 +112,11 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         # parse it so nested objects/arrays are sent correctly to the API
         body = _parse_json_strings(body)
 
+        # Unwrap RootModel: if body has only one field named 'root', send its value directly.
+        # This handles cases where the request body is a RootModel wrapping a single union.
+        if set(body.keys()) == {"root"}:
+            body = body["root"]
+
         # Build URL with path params
         path = ep.path
         for k, v in path_params.items():
@@ -122,7 +127,15 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
 
         with httpx.Client(timeout=300) as client:
             if ep.method in ("post", "put", "patch"):
-                resp = client.request(ep.method.upper(), url, json=body or None, params=query_params, headers=headers)
+                # For POST/PUT/PATCH: always send a JSON body (even empty {}) if the
+                # endpoint declares a body schema, otherwise APIs like Qdrant reject
+                # the request with "EOF while parsing JSON body".
+                json_body = body
+                if not json_body and ep.body_schema is not None:
+                    json_body = {}
+                elif not json_body:
+                    json_body = None
+                resp = client.request(ep.method.upper(), url, json=json_body, params=query_params, headers=headers)
             else:
                 resp = client.request(ep.method.upper(), url, params=query_params, headers=headers)
 

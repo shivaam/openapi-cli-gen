@@ -148,6 +148,48 @@ def main():
     else:
         print("Skipping OpenAI tests (CLI_TOKEN not set)")
 
+    # === QDRANT POINTS CRUD ===
+    runner.suite("Qdrant Points")
+    try:
+        spec = "https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json"
+        app = build_cli(spec=spec, name="qdrant", base_url="http://localhost:6333")
+        runner.run("Create collection", app, [
+            "Collections", "create",
+            "--collection-name", "pts_regression",
+            "--vectors", '{"size": 4, "distance": "Cosine"}',
+        ])
+        runner.run("Upsert points", app, [
+            "Points", "upsert",
+            "--collection-name", "pts_regression",
+            "--root", '{"points": [{"id": 1, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"city": "NYC"}}, {"id": 2, "vector": [0.5, 0.6, 0.7, 0.8]}]}',
+        ])
+        runner.run("Count points", app, ["Points", "count", "--collection-name", "pts_regression"])
+        runner.run("Get point", app, ["Points", "get-point", "--collection-name", "pts_regression", "--id", "1"])
+        runner.run("Scroll points", app, ["Points", "scroll", "--collection-name", "pts_regression", "--limit", "10"])
+        runner.run("Query points", app, [
+            "Search", "query-points",
+            "--collection-name", "pts_regression",
+            "--query", "[0.1, 0.2, 0.3, 0.4]",
+            "--limit", "2",
+        ])
+        runner.run("Cleanup", app, ["Collections", "delete", "--collection-name", "pts_regression"])
+    except Exception as e:
+        print(f"Qdrant Points setup failed: {e}")
+
+    # === GITHUB PUBLIC API (no auth needed) ===
+    runner.suite("GitHub (public)")
+    try:
+        spec = "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json"
+        app = build_cli(spec=spec, name="gh", base_url="https://api.github.com")
+        runner.run("Meta root", app, ["meta", "meta/root"])
+        runner.run("Zen", app, ["meta", "meta/get-zen"])
+        runner.run("Octocat", app, ["meta", "meta/get-octocat"])
+        runner.run("Rate limit", app, ["rate-limit", "rate-limit/get"])
+        runner.run("Get license", app, ["licenses", "licenses/get", "--license", "mit"])
+        runner.run("Get user", app, ["users", "users/get-by-username", "--username", "shivaam"])
+    except Exception as e:
+        print(f"GitHub setup failed: {e}")
+
     success = runner.summary()
     sys.exit(0 if success else 1)
 
