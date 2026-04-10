@@ -37,11 +37,13 @@ export TYPESENSE_REST_CLI_API_KEY=your-api-key
 
 ## Quick Start
 
+All commands below have been verified against a live Typesense instance.
+
 ```bash
 # Server health
 typesense-rest-cli health health
 
-# Create a collection (schema-driven)
+# Create a collection with a typed schema
 typesense-rest-cli collections create \
   --name books \
   --fields '[
@@ -57,23 +59,35 @@ typesense-rest-cli collections get-collections
 # Get a specific collection's schema + doc count
 typesense-rest-cli collections get-collection --collection-name books
 
-# Upsert a document
+# Index a document (use --root for the JSON body)
 typesense-rest-cli documents index --collection-name books --root '{
   "id": "1",
   "title": "The Pragmatic Programmer",
-  "author": "Hunt & Thomas",
+  "author": "Hunt and Thomas",
   "year": 1999
 }'
 
-# Search the collection
+# Index another
+typesense-rest-cli documents index --collection-name books --root '{
+  "id": "2",
+  "title": "Clean Code",
+  "author": "Robert Martin",
+  "year": 2008
+}'
+
+# Search — note that `q` is a single-char flag, so use -q (short form)
 typesense-rest-cli documents search-collection \
   --collection-name books \
-  --q programmer \
+  -q code \
   --query-by title,author
 
-# Delete a collection
+# Delete the collection
 typesense-rest-cli collections delete --collection-name books
 ```
+
+### The `-q` vs `--q` gotcha
+
+Typesense's search endpoint uses a single-character query parameter `q`. Python's argparse treats single-character flags as short-form options, so you invoke it as `-q code` (one dash), not `--q code`. The `--help` output shows `[-q str]` — follow that.
 
 ## Discover All Commands
 
@@ -87,6 +101,8 @@ typesense-rest-cli collections --help
 # Flags for a specific command
 typesense-rest-cli documents search-collection --help
 ```
+
+`documents search-collection` exposes all ~70 search parameters as individual flags (`--query-by`, `--filter-by`, `--sort-by`, `--facet-by`, `--include-fields`, etc.).
 
 ## Output Formats
 
@@ -103,27 +119,27 @@ typesense-rest-cli collections get-collections --output-format raw
 | Group | What it covers |
 |---|---|
 | `health` | Liveness probe |
-| `collections` | Full CRUD for collections + schema |
-| `documents` | Index, upsert, get, delete, search, import |
-| `curation` | Override search results |
-| `aliases` | Collection aliases (blue/green indexing) |
+| `collections` | Full CRUD for collections + aliases (blue/green indexing) |
+| `documents` | Index, upsert, get, delete, search, import, multi-search |
+| `analytics` | Analytics rules + events (click / search tracking) |
+| `keys` | API key creation + scoping |
+| `curation-sets` | Override / promote search results |
 | `synonyms` | Per-collection synonym sets |
 | `stopwords` | Stopword management |
-| `keys` | API key creation + scoping |
-| `multi-search` | Federated search across collections |
-| `analytics` | Analytics rules (click / search events) |
 | `presets` | Reusable search parameter presets |
 | `conversations` | Conversational search models |
-| `debug` | Debug, metrics, stats |
-| `operations` | Snapshot, vote, re-elect leader |
-| `cluster` | Cluster-wide health + vote |
+| `nl-search-models` | Natural-language search models |
+| `stemming` | Stemming dictionaries |
+| `operations` | Snapshot, vote, re-elect leader, cache, slow-request log |
+| `debug` | Debug info |
 
 ## Passing Complex JSON Bodies
 
-Document imports and search parameter objects with nested schemas accept a JSON string via `--root`:
+Most `documents` write endpoints take raw documents whose schema is user-defined — the generator can't produce typed flags for them. Use `--root` with a JSON string:
 
 ```bash
-typesense-rest-cli documents index --collection-name books --root '{"id": "1", ...}'
+typesense-rest-cli documents index --collection-name books --root '{"id":"1", ...}'
+typesense-rest-cli documents update-document --collection-name books --document-id 1 --root '{"year":2024}'
 ```
 
 Flat endpoints (like `collections create`) take typed flags directly.

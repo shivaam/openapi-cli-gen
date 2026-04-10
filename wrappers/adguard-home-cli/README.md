@@ -44,6 +44,8 @@ The CLI automatically sends the `Authorization: Basic ...` header on every reque
 
 ## Quick Start
 
+All commands below have been verified against a live AdGuard Home instance.
+
 ```bash
 # Server status (version, DNS addresses, running state)
 adguard-home-cli global status
@@ -55,17 +57,18 @@ adguard-home-cli stats stats
 # Filter status (which lists are enabled, update intervals)
 adguard-home-cli filtering status
 
-# Add a new blocklist URL
+# Add a new blocklist URL. Note: --no-whitelist flag (boolean toggle),
+# NOT --whitelist false
 adguard-home-cli filtering add-url \
   --name "OISD Full" \
   --url "https://big.oisd.nl/" \
-  --whitelist false
+  --no-whitelist
 
 # Refresh all filters
 adguard-home-cli filtering refresh
 
-# Set user-defined block rules
-adguard-home-cli filtering set-rules --rules '["||example.com^", "||tracker.io^"]'
+# Set user-defined block rules (--root because --rules expects a list)
+adguard-home-cli filtering set-rules --root '{"rules": ["||tracker.example||^", "||ads.example||^"]}'
 
 # Look up a host (debugging)
 adguard-home-cli filtering check-host --name doubleclick.net
@@ -79,17 +82,20 @@ adguard-home-cli safebrowsing status
 adguard-home-cli parental status
 adguard-home-cli safesearch status
 
-# Blocked services (one-off block of Netflix, YouTube, etc.)
-adguard-home-cli blocked_services list
-adguard-home-cli blocked_services set --root '{"ids": ["netflix", "tiktok"]}'
-
 # Query log
 adguard-home-cli log query --limit 50
 
 # DNS rewrites (local DNS entries)
 adguard-home-cli rewrite list
 adguard-home-cli rewrite add --domain home.lan --answer 192.168.1.10
+
+# Remove the filter we added earlier
+adguard-home-cli filtering remove-url --url "https://big.oisd.nl/" --no-whitelist
 ```
+
+### Boolean flags use `--no-X` form
+
+AdGuard's spec has several boolean body fields (`whitelist`, `enabled`, etc.). These are rendered as pairs: `--whitelist` (sets true) or `--no-whitelist` (sets false). **Do not pass `--whitelist false` or `--whitelist true`** — pydantic-settings won't recognize them and argparse will reject the command.
 
 ## Discover All Commands
 
@@ -120,12 +126,12 @@ adguard-home-cli filtering status --output-format raw
 |---|---|
 | `global` | Server status, DNS config, protection toggle, profile, updates |
 | `install` | Initial setup wizard (address discovery, configure, check-config) |
-| `filtering` | Block lists, allow lists, user rules, host lookup |
+| `filtering` | Block lists, allow lists, user rules, host lookup, refresh |
 | `clients` | Per-client access lists and settings |
 | `dhcp` | DHCP server + static leases |
 | `log` | Query log config + search |
 | `stats` | Query statistics + config |
-| `blocked_services` | Time-scheduled service blocking (Netflix, TikTok, etc.) |
+| `blocked-services` | Time-scheduled service blocking (Netflix, TikTok, etc.) |
 | `safebrowsing` | Google Safe Browsing toggle |
 | `parental` | Parental control toggle |
 | `safesearch` | Safe search enforcement |
@@ -145,8 +151,8 @@ export ADGUARD_HOME_CLI_USERNAME=admin
 export ADGUARD_HOME_CLI_PASSWORD=$ADMIN_PASSWORD
 
 # Add block lists
-adguard-home-cli filtering add-url --name "OISD"        --url "https://big.oisd.nl/"            --whitelist false
-adguard-home-cli filtering add-url --name "StevenBlack" --url "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts" --whitelist false
+adguard-home-cli filtering add-url --name "OISD"        --url "https://big.oisd.nl/"            --no-whitelist
+adguard-home-cli filtering add-url --name "StevenBlack" --url "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts" --no-whitelist
 
 # Refresh
 adguard-home-cli filtering refresh

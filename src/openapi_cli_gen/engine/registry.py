@@ -289,11 +289,20 @@ def _build_command_model(
             # for CLI flags. Keep serialization_alias so JSON body uses original name.
             # datamodel-code-generator sets alias=original_name which pydantic-settings
             # uses as the CLI flag, giving camelCase flags instead of kebab-case.
+            #
+            # Determine the serialization_alias to preserve (either from dcg's
+            # `alias` field or from the simple builder's existing `serialization_alias`).
+            existing_ser_alias = None
             if finfo.alias and finfo.alias != fname:
+                existing_ser_alias = finfo.alias
+            elif finfo.serialization_alias and finfo.serialization_alias != fname:
+                existing_ser_alias = finfo.serialization_alias
+
+            if existing_ser_alias is not None:
                 new_info = FieldInfo(
                     default=new_default,
                     description=finfo.description,
-                    serialization_alias=finfo.alias,  # Keep original name for JSON output
+                    serialization_alias=existing_ser_alias,
                 )
                 fields[fname] = (annotation, new_info)
             elif is_required:

@@ -6,7 +6,7 @@
 
 Qdrant ships excellent client SDKs (Python, Rust, Go, JS), but no REST CLI. For shell scripting, Makefile targets, CI pipelines, and interactive ad-hoc queries, most people drop to raw `curl` and hand-build JSON payloads.
 
-This CLI gives you the entire Qdrant REST API as flat shell commands with typed flags — collections, points, snapshots, cluster, shards — without writing any Python or curl boilerplate. When Qdrant adds endpoints, a regeneration picks them up.
+This CLI gives you the entire Qdrant REST API as flat shell commands with typed flags — collections, points, search, snapshots, distributed cluster ops — without writing any Python or curl boilerplate. When Qdrant adds endpoints, a regeneration picks them up.
 
 ## Install
 
@@ -35,6 +35,8 @@ The CLI sends it as the `api-key` header automatically, matching Qdrant's securi
 
 ## Quick Start
 
+All commands below have been verified against a live Qdrant instance.
+
 ```bash
 # Server health
 qdrant-rest-cli service root
@@ -48,29 +50,32 @@ qdrant-rest-cli collections create \
   --collection-name pets \
   --vectors '{"size": 4, "distance": "Cosine"}'
 
-# Upsert points with payloads
+# Upsert points with payloads (use --root for the full JSON request body)
 qdrant-rest-cli points upsert --collection-name pets --root '{
   "points": [
-    {"id": 1, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"name": "Rex",   "species": "dog"}},
-    {"id": 2, "vector": [0.2, 0.1, 0.4, 0.3], "payload": {"name": "Whiskers", "species": "cat"}}
+    {"id": 1, "vector": [0.9, 0.1, 0.1, 0.1], "payload": {"name": "cat",  "species": "mammal"}},
+    {"id": 2, "vector": [0.1, 0.9, 0.1, 0.1], "payload": {"name": "dog",  "species": "mammal"}},
+    {"id": 3, "vector": [0.1, 0.1, 0.9, 0.1], "payload": {"name": "bird", "species": "avian"}}
   ]
 }'
 
 # Count points
 qdrant-rest-cli points count --collection-name pets
 
-# Semantic search
-qdrant-rest-cli points search --collection-name pets \
-  --vector '[0.15, 0.15, 0.35, 0.35]' \
-  --limit 5
+# Semantic search — return results WITH their payloads
+qdrant-rest-cli search points \
+  --collection-name pets \
+  --vector '[0.85, 0.15, 0.1, 0.1]' \
+  --limit 2 \
+  --with-payload true
 
 # Scroll through all points
 qdrant-rest-cli points scroll --collection-name pets --limit 10
 
 # Get a collection's info
-qdrant-rest-cli collections get --collection-name pets
+qdrant-rest-cli collections get-collection --collection-name pets
 
-# Delete a collection
+# Delete the collection
 qdrant-rest-cli collections delete --collection-name pets
 ```
 
@@ -84,7 +89,7 @@ qdrant-rest-cli --help
 qdrant-rest-cli collections --help
 
 # Flags for a specific command
-qdrant-rest-cli points search --help
+qdrant-rest-cli search points --help
 ```
 
 ## Output Formats
@@ -101,32 +106,32 @@ qdrant-rest-cli collections get-collections --output-format raw
 
 | Group | What it covers |
 |---|---|
-| `service` | Server root, health, telemetry, metrics, readiness |
-| `collections` | Full CRUD for collections + aliases + info |
-| `points` | Upsert, get, delete, scroll, count, batch operations |
-| `search` | Vector search, recommend, discover, query |
-| `snapshots` | Create / list / delete / download snapshots |
-| `cluster` | Cluster status, peer management |
-| `shards` | Shard key operations |
-| `indexes` | Payload index management |
+| `service` | Server root, health (`healthz`, `livez`, `readyz`), telemetry, metrics |
+| `collections` | Full CRUD for collections + optimizations |
+| `aliases` | Collection aliases |
+| `points` | Upsert, get, delete, scroll, count, batch operations, payload/vector updates, facets |
+| `search` | Query points, batch search, recommend, discover, point groups, matrices |
+| `snapshots` | Create / list / delete / restore snapshots (collection + shard level) |
+| `distributed` | Cluster status, peer management, shard keys |
+| `indexes` | Payload index create/delete |
+| `beta` | Issue tracking for the running instance |
 
 ## Passing Complex JSON Bodies
 
-Qdrant endpoints with deeply nested unions (like `points upsert`, batch operations) accept a JSON string via `--root`:
+Most Qdrant write endpoints take deeply nested request bodies (lists of points, complex filters, hybrid queries). For these, pass the entire body as a JSON string via `--root`:
 
 ```bash
-qdrant-rest-cli points upsert --collection-name pets --root '{
-  "points": [...]
+qdrant-rest-cli points upsert --collection-name pets --root '{"points":[...]}'
+
+qdrant-rest-cli search points --collection-name pets --root '{
+  "vector": [0.85, 0.15, 0.1, 0.1],
+  "limit": 5,
+  "with_payload": true,
+  "filter": {"must": [{"key": "species", "match": {"value": "mammal"}}]}
 }'
 ```
 
-Flat endpoints (like `collections create`) accept typed flags directly:
-
-```bash
-qdrant-rest-cli collections create --collection-name pets --vectors '{"size": 4, "distance": "Cosine"}'
-```
-
-Both styles work; use whichever is clearer for a given call.
+Flat endpoints (like `collections create`) accept typed flags directly — use whichever is clearer for a given call.
 
 ## Real Example: End-to-End Vector Search
 
@@ -144,13 +149,14 @@ $ qdrant-rest-cli points upsert --collection-name movies --root '{
   }'
 {"result": {"operation_id": 0, "status": "completed"}, "status": "ok"}
 
-$ qdrant-rest-cli points search --collection-name movies \
+$ qdrant-rest-cli search points --collection-name movies \
     --vector '[0.85, 0.15, 0.1, 0.1]' \
-    --limit 2
+    --limit 2 \
+    --with-payload true
 {
   "result": [
     {"id": 1, "score": 0.998, "payload": {"title": "The Matrix"}},
-    {"id": 2, "score": 0.204, "payload": {"title": "Titanic"}}
+    {"id": 2, "score": 0.299, "payload": {"title": "Titanic"}}
   ],
   "status": "ok"
 }
