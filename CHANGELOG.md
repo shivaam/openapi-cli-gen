@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.15 (2026-04-10)
+
+**Hotfix: add `email-validator` as a core dependency.**
+
+Pydantic's `EmailStr` type lazy-imports `email-validator`, so specs that use `format: email` (such as Immich's `/authentication/login` and `/users` endpoints) would crash with `ImportError: email-validator is not installed` unless the user had coincidentally installed it via another package.
+
+Caught by a fresh-venv PyPI install test of `immich-rest-cli` on 0.0.14. Adding as a hard dep so any spec with email fields works out of the box.
+
 ## v0.0.14 (2026-04-10)
 
 **Auth + multipart body support. Unblocks AdGuard, Immich, and any API using HTTP Basic or multipart/form-data uploads.**

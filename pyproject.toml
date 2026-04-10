@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openapi-cli-gen"
-version = "0.0.14"
+version = "0.0.15"
 description = "Generate typed Python CLIs from OpenAPI specs with Pydantic model flattening into CLI flags"
 readme = "README.md"
 license = "MIT"
@@ -28,6 +28,7 @@ classifiers = [
 
 dependencies = [
     "pydantic-settings>=2.13",
+    "email-validator>=2.0",
     "jsonref>=1.1",
     "openapi-pydantic>=0.5",
     "httpx>=0.27",
