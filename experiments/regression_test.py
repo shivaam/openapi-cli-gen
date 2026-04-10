@@ -72,22 +72,22 @@ def main():
     try:
         spec = "https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json"
         app = build_cli(spec=spec, name="qdrant", base_url="http://localhost:6333")
-        runner.run("Service root", app, ["Service", "root"])
-        runner.run("Healthz", app, ["Service", "healthz"])
-        runner.run("List collections", app, ["Collections", "get-collections"])
+        runner.run("Service root", app, ["service", "root"])
+        runner.run("Healthz", app, ["service", "healthz"])
+        runner.run("List collections", app, ["collections", "get-collections"])
         runner.run("Create collection", app, [
-            "Collections", "create",
+            "collections", "create",
             "--collection-name", "regression_test",
             "--vectors", '{"size": 4, "distance": "Cosine"}',
         ])
         runner.run("Get collection", app, [
-            "Collections", "get-collection", "--collection-name", "regression_test",
+            "collections", "get-collection", "--collection-name", "regression_test",
         ])
         runner.run("Exists", app, [
-            "Collections", "exists", "--collection-name", "regression_test",
+            "collections", "exists", "--collection-name", "regression_test",
         ])
         runner.run("Delete collection", app, [
-            "Collections", "delete", "--collection-name", "regression_test",
+            "collections", "delete", "--collection-name", "regression_test",
         ])
     except Exception as e:
         print(f"Qdrant setup failed: {e}")
@@ -97,16 +97,16 @@ def main():
     try:
         spec = "https://raw.githubusercontent.com/meilisearch/open-api/main/open-api.json"
         app = build_cli(spec=spec, name="meili", base_url="http://localhost:7700")
-        runner.run("Health", app, ["Health", "get"])
-        runner.run("Version", app, ["Version", "get"])
-        runner.run("List indexes", app, ["Indexes", "list"])
+        runner.run("Health", app, ["health", "get"])
+        runner.run("Version", app, ["version", "get"])
+        runner.run("List indexes", app, ["indexes", "list"])
         runner.run("Create index", app, [
-            "Indexes", "create-index", "--uid", "regression_test", "--primary-key", "id",
+            "indexes", "create-index", "--uid", "regression_test", "--primary-key", "id",
         ])
-        runner.run("Stats", app, ["Stats", "get"])
-        runner.run("List tasks", app, ["Tasks", "get-tasks"])
+        runner.run("Stats", app, ["stats", "get"])
+        runner.run("List tasks", app, ["tasks", "get-tasks"])
         runner.run("Delete index", app, [
-            "Indexes", "delete-index", "--index-uid", "regression_test",
+            "indexes", "delete-index", "--index-uid", "regression_test",
         ])
     except Exception as e:
         print(f"Meilisearch setup failed: {e}")
@@ -117,30 +117,30 @@ def main():
         try:
             spec = "https://raw.githubusercontent.com/openai/openai-openapi/2025-03-21/openapi.yaml"
             app = build_cli(spec=spec, name="cli")
-            runner.run("Models list", app, ["Models", "list"])
-            runner.run("Models retrieve", app, ["Models", "retrieve", "--model", "gpt-4o-mini"])
+            runner.run("Models list", app, ["models", "list"])
+            runner.run("Models retrieve", app, ["models", "retrieve", "--model", "gpt-4o-mini"])
             runner.run("Embeddings", app, [
-                "Embeddings", "create",
+                "embeddings", "create",
                 "--input", "Hello",
                 "--model", "text-embedding-3-small",
                 "--dimensions", "4",
             ])
             runner.run("Moderations", app, [
-                "Moderations", "create", "--input", "I love cats",
+                "moderations", "create", "--input", "I love cats",
             ])
             runner.run("Legacy completions", app, [
-                "Completions", "create",
+                "completions", "create",
                 "--model", "gpt-3.5-turbo-instruct",
                 "--prompt", "Python is",
                 "--max-tokens", "5",
             ])
             runner.run("Chat completion", app, [
-                "Chat", "create-completion",
+                "chat", "create-completion",
                 "--model", "gpt-4o-mini",
                 "--messages", '[{"role":"user","content":"Reply with exactly 3 words"}]',
             ])
-            runner.run("Files list", app, ["Files", "list"])
-            runner.run("Vector stores list", app, ["Vector stores", "list-vector-stores"])
+            runner.run("Files list", app, ["files", "list"])
+            runner.run("Vector stores list", app, ["vector-stores", "list-vector-stores"])
         except Exception as e:
             print(f"OpenAI setup failed: {e}")
             import traceback
@@ -154,25 +154,25 @@ def main():
         spec = "https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json"
         app = build_cli(spec=spec, name="qdrant", base_url="http://localhost:6333")
         runner.run("Create collection", app, [
-            "Collections", "create",
+            "collections", "create",
             "--collection-name", "pts_regression",
             "--vectors", '{"size": 4, "distance": "Cosine"}',
         ])
         runner.run("Upsert points", app, [
-            "Points", "upsert",
+            "points", "upsert",
             "--collection-name", "pts_regression",
             "--root", '{"points": [{"id": 1, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"city": "NYC"}}, {"id": 2, "vector": [0.5, 0.6, 0.7, 0.8]}]}',
         ])
-        runner.run("Count points", app, ["Points", "count", "--collection-name", "pts_regression"])
-        runner.run("Get point", app, ["Points", "get-point", "--collection-name", "pts_regression", "--id", "1"])
-        runner.run("Scroll points", app, ["Points", "scroll", "--collection-name", "pts_regression", "--limit", "10"])
+        runner.run("Count points", app, ["points", "count", "--collection-name", "pts_regression"])
+        runner.run("Get point", app, ["points", "get-point", "--collection-name", "pts_regression", "--id", "1"])
+        runner.run("Scroll points", app, ["points", "scroll", "--collection-name", "pts_regression", "--limit", "10"])
         runner.run("Query points", app, [
-            "Search", "query-points",
+            "search", "query-points",
             "--collection-name", "pts_regression",
             "--query", "[0.1, 0.2, 0.3, 0.4]",
             "--limit", "2",
         ])
-        runner.run("Cleanup", app, ["Collections", "delete", "--collection-name", "pts_regression"])
+        runner.run("Cleanup", app, ["collections", "delete", "--collection-name", "pts_regression"])
     except Exception as e:
         print(f"Qdrant Points setup failed: {e}")
 

@@ -65,6 +65,29 @@ def parse_spec(
             query_params = []
             for p in operation.get("parameters", []):
                 schema = p.get("schema", {})
+                # Object-typed query params with properties (OpenAPI style=form, explode=true)
+                # flatten into individual query params. Typesense's `searchParameters` is the
+                # canonical case: spec declares one object-typed query param with 72 properties,
+                # wire format is `?q=matrix&query_by=title&...` — each property as its own param.
+                if (
+                    p.get("in") == "query"
+                    and schema.get("type") == "object"
+                    and schema.get("properties")
+                ):
+                    for sub_name, sub_schema in schema.get("properties", {}).items():
+                        if not isinstance(sub_schema, dict):
+                            continue
+                        query_params.append(
+                            ParamInfo(
+                                name=sub_name,
+                                type=sub_schema.get("type", "string"),
+                                required=False,  # always optional; server decides at runtime
+                                default=sub_schema.get("default"),
+                                enum=sub_schema.get("enum"),
+                            )
+                        )
+                    continue
+
                 param = ParamInfo(
                     name=p["name"],
                     type=schema.get("type", "string"),

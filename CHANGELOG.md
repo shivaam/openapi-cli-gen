@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.0.16 (2026-04-10)
+
+**Major quality pass driven by a blind external evaluation of the 6 wrapper packages.** A fresh Claude Code instance was given only PyPI names + docker setup and asked to use each wrapper like a real user. The report surfaced several critical bugs in the generator (not just per-wrapper bugs) that silently shipped in 0.0.14/0.0.15. This release fixes all of them.
+
+### Breaking changes
+
+- **Group names are now kebab-cased and shell-safe.** OpenAPI tags like `Vector stores`, `Users (admin)`, `Facet Search`, `Database Backups (admin)` are normalized to `vector-stores`, `users-admin`, `facet-search`, `database-backups-admin`. Previously these required shell quoting and parens broke on common shells. All existing wrapper scripts that hardcode group names with spaces/parens/uppercase need to be updated.
+- **Command names with concatenated HTTP verbs are now split.** Meilisearch's Settings op IDs like `deletechat`, `patchembedders`, `deletedisplayedAttributes` become `delete-chat`, `patch-embedders`, `delete-displayed-attributes`.
+- **Query parameters are always CLI-optional.** Regardless of what the spec says. Meilisearch and others over-declare `required: true` on query params that are optional at runtime; enforcing this at the CLI layer forced users to pass dummy values. Servers still reject truly-missing required params with a clear HTTP 400.
+
+### Added
+
+- **Universal `--root` JSON fallback for all POST/PUT/PATCH bodies.** Every body-having endpoint now gets a `--root` flag that accepts a raw JSON string, overriding typed flags. Handles:
+  - Schemaless bodies (Typesense `documents index`, Meilisearch `Documents replace` — both had `schema: {}` in the spec, producing zero typed flags before)
+  - Specs whose field casing doesn't match the server's wire format (Meilisearch's `SearchQuery` declares `retrieve_vectors`, server wants `retrieveVectors`)
+  - Users who prefer pasting JSON over building it flag-by-flag
+  - RootModel bodies (unified with the previous RootModel special case)
+- **Object-typed query parameter flattening.** When a query param has `schema.type: object` with properties (OpenAPI default style=form, explode=true), each property becomes its own CLI flag. Unblocks Typesense's `searchCollection`, which declares a single `searchParameters` object query param with 72 sub-fields — previously unusable, now exposes `--q`, `--query-by`, `--filter-by`, etc.
+- **Empty-body warning.** If a POST/PUT/PATCH endpoint declares a body schema but the serialized body ends up empty (no typed flags set, no `--root` passed), the CLI now prints a stderr warning before sending. This catches the silent-success-on-empty-body footgun that previously let writes fail without the user noticing.
+
+### Fixed
+
+- **Boolean/number/null literal coercion.** `--with-payload true` now sends a real JSON `true`, not the string `"true"` (which Qdrant rejected). `_parse_json_strings` now handles JSON literals (true/false/null/numbers) in addition to objects/arrays.
+- **Body fields respect `--root` override.** Body fields that were required in the schema are now CLI-optional at the parse layer, so `--root` can bypass them without pydantic-settings rejecting the command for missing required fields.
+- **`body_schema: {}` (empty dict) is no longer treated as "no body".** Meilisearch declares some body schemas as literal `{}` (falsy in Python). Switched to `is not None` so these endpoints get the `--root` flag.
+
+### Verified live
+
+- **Typesense:** `documents index --root '{...}'` now works. `documents search-collection -q matrix --query-by title` returns correct results (72 flattened query params all usable).
+- **Meilisearch:** `documents replace --root '[...]'` now actually writes documents (task: succeeded, received=3, indexed=3). Previously sent empty body and silently reported "enqueued". `indexes search-with-post --root '{"q":"matrix"}'` returns matching hits, bypassing the upstream snake_case/camelCase spec mismatch.
+- **Qdrant:** `search points --with-payload true` now sends a real boolean and returns payloads. `search points --root '{...}'` (the universal escape hatch) works even though `--limit` is schema-required.
+- **Regression:** 36/36 across Qdrant × 2, Meilisearch, Typesense, OpenAI (8), GitHub (6).
+
 ## v0.0.15 (2026-04-10)
 
 **Hotfix: add `email-validator` as a core dependency.**

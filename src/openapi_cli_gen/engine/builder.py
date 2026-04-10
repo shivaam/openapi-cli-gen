@@ -108,14 +108,22 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         # Handle nested models: convert Pydantic models to dicts for JSON serialization
         body = _serialize_body(body)
 
-        # Parse JSON strings: if a field value looks like JSON (starts with { or [),
-        # parse it so nested objects/arrays are sent correctly to the API
+        # Parse JSON strings: if a field value looks like JSON (object, array, bool,
+        # null, number, or quoted string), parse it so nested objects/arrays/bools
+        # are sent correctly to the API.
         body = _parse_json_strings(body)
 
-        # Unwrap RootModel: if body has only one field named 'root', send its value directly.
-        # This handles cases where the request body is a RootModel wrapping a single union.
-        if set(body.keys()) == {"root"}:
+        # --root escape hatch: if the user explicitly provided --root, use it as
+        # the entire request body, ignoring all other body fields. This handles:
+        #   - Schemaless body endpoints (type: object with no properties)
+        #   - Specs whose field casing doesn't match the server's wire format
+        #   - RootModel bodies (single union wrapped in `root`)
+        #   - Users who prefer pasting JSON over typed flags
+        if body.get("root") is not None:
             body = body["root"]
+        elif set(body.keys()) == {"root"}:
+            # Fallthrough: empty RootModel wrapper — send None
+            body = None
 
         # Build URL with path params
         path = ep.path
@@ -164,6 +172,16 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
                 # the request with "EOF while parsing JSON body".
                 json_body = body
                 if not json_body and ep.body_schema is not None:
+                    # Body schema declared but nothing to send. This is a common footgun:
+                    # the user invoked a write endpoint without --root or any typed flags.
+                    # Warn loudly so they don't mistake a silent no-op for success.
+                    print(
+                        f"Warning: {ep.method.upper()} {ep.path} requires a request body, "
+                        f"but none was provided. Sending an empty object. "
+                        f"Pass --root '<json>' to send a JSON body, or use --help to see "
+                        f"the typed flags for this command.",
+                        file=sys.stderr,
+                    )
                     json_body = {}
                 elif not json_body:
                     json_body = None
@@ -197,11 +215,18 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
 
 
 def _parse_json_strings(obj):
-    """Recursively parse string values that look like JSON (start with { or [).
+    """Recursively parse string values that look like JSON literals.
 
-    This lets users pass nested objects/arrays as JSON strings on the CLI:
-        --vectors '{"size": 4, "distance": "Cosine"}'
-    Without this, the string would be sent as-is instead of a parsed object.
+    Handles:
+      - Objects:  '{"size": 4, "distance": "Cosine"}' → dict
+      - Arrays:   '[0.1, 0.2, 0.3]' → list
+      - Booleans: 'true', 'false' → bool
+      - Null:     'null' → None
+      - Numbers:  '42', '3.14' → int/float
+
+    Plain strings that aren't valid JSON are passed through unchanged. This lets
+    users type `--with-payload true` and get an actual boolean on the wire instead
+    of the string "true" (which APIs like Qdrant reject).
     """
     if isinstance(obj, dict):
         return {k: _parse_json_strings(v) for k, v in obj.items()}
@@ -209,11 +234,27 @@ def _parse_json_strings(obj):
         return [_parse_json_strings(v) for v in obj]
     if isinstance(obj, str):
         stripped = obj.strip()
-        if stripped.startswith(("{", "[")):
+        if not stripped:
+            return obj
+        # Structural JSON
+        if stripped[0] in "{[":
             try:
                 return json.loads(stripped)
             except json.JSONDecodeError:
                 return obj
+        # Literal JSON keywords
+        if stripped in ("true", "false", "null"):
+            return json.loads(stripped)
+        # JSON numbers — only if the whole thing parses and matches a number
+        # type. Avoid accidentally parsing things like version strings ("1.2.3")
+        # that happen to start with a digit.
+        if stripped[0] in "-0123456789":
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, (int, float)):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
         return obj
     return obj
 

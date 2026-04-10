@@ -33,7 +33,7 @@ def build_registry(
     gen_models = generated_models or {}
 
     for ep in endpoints:
-        group = ep.tag
+        group = _normalize_group_name(ep.tag)
         cmd_name = _derive_command_name(ep)
         model = _build_command_model(ep, model_cache, gen_models)
 
@@ -57,11 +57,74 @@ def build_registry(
     return registry
 
 
+def _normalize_group_name(tag: str) -> str:
+    """Normalize an OpenAPI tag into a shell-friendly command group name.
+
+    Tags in the wild include "Vector stores", "Users (admin)", "Database Backups
+    (admin)", "Facet Search" — each of which requires shell quoting (or fails
+    outright on shells that interpret parens). Normalize to a plain kebab-case
+    identifier that never needs quoting:
+
+        "Vector stores"           → "vector-stores"
+        "Users (admin)"           → "users-admin"
+        "Database Backups (admin)" → "database-backups-admin"
+        "Facet Search"            → "facet-search"
+        "API keys"                → "api-keys"
+        "Fine-tuning"             → "fine-tuning"   (already fine)
+        "Health"                  → "health"
+    """
+    if not tag:
+        return "default"
+    # Drop parentheses and brackets entirely (keeping their contents)
+    normalized = re.sub(r"[()\[\]{}]", " ", tag)
+    # Collapse whitespace to single spaces
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    # Replace spaces and underscores with hyphens
+    normalized = re.sub(r"[\s_]+", "-", normalized)
+    # Lowercase
+    normalized = normalized.lower()
+    # Drop any remaining non-alphanumeric-or-hyphen chars
+    normalized = re.sub(r"[^a-z0-9\-]", "", normalized)
+    # Collapse multiple hyphens
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+    return normalized or "default"
+
+
+HTTP_VERBS_PREFIX = ("delete", "update", "create", "patch", "put", "post", "get",
+                     "list", "add", "find", "place", "send", "upload", "trigger",
+                     "download", "search", "check", "run", "cancel", "reset",
+                     "fetch", "retrieve", "remove")
+
+
+def _split_leading_verb(normalized: str) -> str:
+    """Insert an underscore after a leading HTTP verb that's jammed against the
+    resource name, so `deletechat` → `delete_chat`, `patchembedders` →
+    `patch_embedders`, `deletedisplayed_attributes` → `delete_displayed_attributes`.
+
+    Some OpenAPI specs (Meilisearch's Settings group is the poster child) don't
+    separate the verb from the resource in operationIds. Without this split, our
+    kebab converter emits `deletechat` which is unreadable.
+
+    Already-separated names (`list_users`, `delete_user`) pass through unchanged.
+    """
+    if "_" in normalized[:6]:
+        # Already has a separator in the first few chars — leave it alone.
+        return normalized
+    for verb in HTTP_VERBS_PREFIX:
+        if normalized.startswith(verb) and len(normalized) > len(verb):
+            rest = normalized[len(verb):]
+            # Only split if the rest starts with a letter (not a digit or underscore)
+            if rest[0].isalpha():
+                return f"{verb}_{rest}"
+    return normalized
+
+
 def _derive_command_name(ep: EndpointInfo) -> str:
     """Derive a CLI command name from an endpoint.
 
     Handles both snake_case (list_users) and camelCase (addPet) operationIds.
-    Strategy: normalize to snake_case, strip tag suffix/prefix, kebab-case result.
+    Strategy: normalize to snake_case, split leading HTTP verb if jammed against
+    the resource name, strip tag suffix/prefix, kebab-case result.
 
     Examples:
         list_users (tag=users) → list
@@ -70,12 +133,18 @@ def _derive_command_name(ep: EndpointInfo) -> str:
         findPetsByStatus (tag=pet) → find-by-status
         getPetById (tag=pet) → get-by-id
         uploadFile (tag=pet) → upload-file
+        deletechat (tag=Settings) → delete-chat
+        patchembedders (tag=Settings) → patch-embedders
+        deletedisplayedAttributes (tag=Settings) → delete-displayed-attributes
     """
     op_id = ep.operation_id
     tag = ep.tag
 
     # Normalize camelCase to snake_case first
     normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", op_id).lower()
+
+    # Split leading HTTP verb if concatenated against the resource name (Meili case).
+    normalized = _split_leading_verb(normalized)
 
     singular = tag.rstrip("s") if tag.endswith("s") else tag
     tag_lower = tag.lower()
@@ -139,27 +208,46 @@ def _build_command_model(
             field_info = FieldInfo(description=p.name, serialization_alias=p.name)
         fields[snake_name] = (py_type, field_info)
 
-    # Query params → optional fields with defaults
+    # Query params → ALWAYS optional fields with default=None.
+    #
+    # Rationale: several popular APIs (Meilisearch, others) over-declare `required: true`
+    # on query parameters that are actually optional at runtime. Enforcing required at the
+    # CLI layer forces users to pass dummy values they don't care about. Servers will still
+    # reject truly-required missing params with a clear HTTP 400, which is a better error
+    # than pydantic-settings' "field required" complaint.
+    #
+    # Also: object-typed query params (style=form, explode=true, schema: object with
+    # properties) flatten into individual query params per property, matching how the
+    # wire actually works. Typesense's `searchParameters` is the canonical example —
+    # the spec declares one object-typed query param, but the server takes each property
+    # as a separate `?key=value` pair.
     for p in ep.query_params:
         py_type = TYPE_MAP.get(p.type, str)
-        if not p.required:
-            py_type = py_type | None
+        py_type = py_type | None  # always optional at CLI layer
         default = p.default
         # Guard: skip defaults that don't match the type (e.g., list default for string field)
         if default is not None and not isinstance(default, (str, int, float, bool)):
             default = None
-        if default is None and not p.required:
-            default = None
-        elif default is None and p.required:
-            default = ...
+        if default is None:
+            default = None  # explicit
         snake_name = to_snake_case(p.name)
         if snake_name != p.name:
             fields[snake_name] = (py_type, FieldInfo(default=default, serialization_alias=p.name))
         else:
             fields[p.name] = (py_type, FieldInfo(default=default))
 
-    # Body schema → try generated models first, fall back to simple builder
-    if ep.body_schema:
+    # Body schema → try generated models first, fall back to simple builder.
+    #
+    # All body fields are forced to be CLI-optional (even if the spec marks them
+    # `required: true`). Rationale: we always expose a `--root` JSON escape hatch
+    # for bodies, and pydantic-settings validates required fields at flag-parse
+    # time — before our cli_cmd runs — so enforcing required would make --root
+    # unusable. Users who miss a required field get a clear HTTP error from the
+    # server instead of a CLI-layer "field required" error.
+    from pydantic_core import PydanticUndefined as _Undef
+    # Note: `is not None` matters here — Meilisearch declares some body schemas as
+    # literal `{}` (empty dict) which is falsy. Those still need the --root flag.
+    if ep.body_schema is not None:
         # Prefer the original $ref name if available (preserves allOf/oneOf handling)
         schema_name = ep.body_ref_name or _extract_schema_name(ep.body_schema)
         if ep.body_content_type == "multipart/form-data":
@@ -186,19 +274,58 @@ def _build_command_model(
                 fields[fname] = (str | None, new_info)
                 continue
 
+            # Force CLI-optional: make annotation Optional and set default to None
+            # if the field was originally required (no default). This lets --root
+            # bypass typed flags without tripping pydantic-settings' required check.
+            is_required = finfo.default is _Undef
+            if is_required:
+                # Union with None to make it optional in pydantic's eyes
+                annotation = annotation | None
+                new_default = None
+            else:
+                new_default = finfo.default
+
             # Strip alias so pydantic-settings uses the Python field name (snake_case)
             # for CLI flags. Keep serialization_alias so JSON body uses original name.
             # datamodel-code-generator sets alias=original_name which pydantic-settings
             # uses as the CLI flag, giving camelCase flags instead of kebab-case.
             if finfo.alias and finfo.alias != fname:
                 new_info = FieldInfo(
-                    default=finfo.default,
+                    default=new_default,
                     description=finfo.description,
                     serialization_alias=finfo.alias,  # Keep original name for JSON output
                 )
                 fields[fname] = (annotation, new_info)
+            elif is_required:
+                new_info = FieldInfo(default=new_default, description=finfo.description)
+                fields[fname] = (annotation, new_info)
             else:
                 fields[fname] = (annotation, finfo)
+
+    # Universal --root escape hatch for JSON bodies.
+    #
+    # For every endpoint that declares a non-multipart request body, add a `--root`
+    # flag that accepts a raw JSON string. When provided, the builder uses it as the
+    # entire request body, bypassing typed flags. This handles three critical cases:
+    #
+    #   1. Endpoints with schemaless `type: object` bodies (Typesense documents/index,
+    #      Meilisearch Documents/replace) that produce zero typed flags.
+    #   2. Endpoints where the spec's field casing doesn't match the server's wire
+    #      format (Meilisearch's SearchQuery declares snake_case, server wants camelCase).
+    #   3. Any endpoint where users want to paste a JSON payload instead of building
+    #      it up flag by flag.
+    #
+    # We only add `root` if no field named `root` already exists (RootModel case
+    # already has one).
+    if ep.body_schema is not None and ep.body_content_type != "multipart/form-data":
+        if "root" not in fields:
+            fields["root"] = (
+                str | None,
+                FieldInfo(
+                    default=None,
+                    description="Pass the entire request body as a JSON string (overrides typed flags).",
+                ),
+            )
 
     # Add output_format flag to every command
     fields["output_format"] = (str, FieldInfo(default="json", description="Output format: json, table, yaml, raw"))
