@@ -127,10 +127,17 @@ def _build_command_model(
 
     fields: dict[str, Any] = {}
 
-    # Path params → required fields
+    from openapi_cli_gen.engine.models import to_snake_case
+
+    # Path params → required fields (snake_cased for CLI, original name kept as alias)
     for p in ep.path_params:
         py_type = TYPE_MAP.get(p.type, str)
-        fields[p.name] = (py_type, FieldInfo(description=p.name))
+        snake_name = to_snake_case(p.name)
+        field_info = FieldInfo(description=p.name)
+        if snake_name != p.name:
+            # Keep the original name as serialization_alias for URL substitution
+            field_info = FieldInfo(description=p.name, serialization_alias=p.name)
+        fields[snake_name] = (py_type, field_info)
 
     # Query params → optional fields with defaults
     for p in ep.query_params:
@@ -145,21 +152,148 @@ def _build_command_model(
             default = None
         elif default is None and p.required:
             default = ...
-        fields[p.name] = (py_type, FieldInfo(default=default))
+        snake_name = to_snake_case(p.name)
+        if snake_name != p.name:
+            fields[snake_name] = (py_type, FieldInfo(default=default, serialization_alias=p.name))
+        else:
+            fields[p.name] = (py_type, FieldInfo(default=default))
 
     # Body schema → try generated models first, fall back to simple builder
     if ep.body_schema:
         # Prefer the original $ref name if available (preserves allOf/oneOf handling)
         schema_name = ep.body_ref_name or _extract_schema_name(ep.body_schema)
         body_model = get_body_model(schema_name, generated_models, ep.body_schema, model_cache)
+        # Replace complex union types with str to keep CLI permissive.
+        # Users can pass JSON strings that our builder will parse before sending.
+        # Generated models from datamodel-code-generator preserve exact types
+        # (e.g., VectorParams | Record) which pydantic-settings can't flag-ify.
         for fname, finfo in body_model.model_fields.items():
-            fields[fname] = (finfo.annotation, finfo)
+            annotation = finfo.annotation
+            # Fall back to str for complex types that pydantic-settings can't flag-ify.
+            # User passes JSON which our builder parses before sending.
+            if (_is_complex_union(annotation)
+                or _is_list_of_basemodel(annotation)
+                or _is_root_or_problematic_basemodel(annotation)):
+                # Drop the default entirely — it may not be a valid string
+                new_info = FieldInfo(default=None, description=finfo.description)
+                fields[fname] = (str | None, new_info)
+                continue
+
+            # Strip alias so pydantic-settings uses the Python field name (snake_case)
+            # for CLI flags. Keep serialization_alias so JSON body uses original name.
+            # datamodel-code-generator sets alias=original_name which pydantic-settings
+            # uses as the CLI flag, giving camelCase flags instead of kebab-case.
+            if finfo.alias and finfo.alias != fname:
+                new_info = FieldInfo(
+                    default=finfo.default,
+                    description=finfo.description,
+                    serialization_alias=finfo.alias,  # Keep original name for JSON output
+                )
+                fields[fname] = (annotation, new_info)
+            else:
+                fields[fname] = (annotation, finfo)
 
     # Add output_format flag to every command
     fields["output_format"] = (str, FieldInfo(default="json", description="Output format: json, table, yaml, raw"))
 
     model_name = f"Cmd_{ep.operation_id}"
     return create_model(model_name, __doc__=ep.summary or ep.operation_id, **fields)
+
+
+def _is_complex_union(annotation) -> bool:
+    """Check if a type annotation is a union with 2+ BaseModel members.
+
+    These can't be flag-ified — pydantic-settings can't pick a variant.
+    Returns True for `VectorParams | Record | None`.
+    """
+    from typing import get_args, get_origin, Union
+    from types import UnionType
+
+    origin = get_origin(annotation)
+    if origin is not Union and not isinstance(annotation, UnionType):
+        return False
+
+    args = get_args(annotation)
+    non_none = [a for a in args if a is not type(None)]
+
+    if len(non_none) <= 1:
+        return False
+
+    base_model_count = 0
+    for arg in non_none:
+        try:
+            if isinstance(arg, type) and issubclass(arg, BaseModel):
+                base_model_count += 1
+        except TypeError:
+            pass
+    return base_model_count >= 2
+
+
+def _is_root_or_problematic_basemodel(annotation) -> bool:
+    """Check if annotation is a BaseModel (possibly Optional) that should be
+    CLI-friendly str instead of nested flag expansion.
+
+    pydantic-settings struggles with:
+    - RootModel subclasses (they wrap a single type)
+    - Models with complex field types
+    Returns True if we should fall back to accepting a JSON string.
+    """
+    from typing import get_args, get_origin, Union
+    from types import UnionType
+
+    origin = get_origin(annotation)
+    if origin is Union or isinstance(annotation, UnionType):
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            annotation = args[0]
+        else:
+            return False  # complex union handled elsewhere
+
+    try:
+        if not (isinstance(annotation, type) and issubclass(annotation, BaseModel)):
+            return False
+    except TypeError:
+        return False
+
+    # RootModel — always fall back (not flag-friendly)
+    try:
+        from pydantic import RootModel
+        if issubclass(annotation, RootModel):
+            return True
+    except ImportError:
+        pass
+
+    # Check if any field has a complex type that pydantic-settings can't handle
+    for name, info in annotation.model_fields.items():
+        if _is_complex_union(info.annotation) or _is_list_of_basemodel(info.annotation):
+            return True
+
+    return False
+
+
+def _is_list_of_basemodel(annotation) -> bool:
+    """Check if annotation is `list[BaseModel]` or `list[BaseModel] | None`."""
+    from typing import get_args, get_origin, Union
+    from types import UnionType
+
+    # Unwrap Optional
+    origin = get_origin(annotation)
+    if origin is Union or isinstance(annotation, UnionType):
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            annotation = args[0]
+            origin = get_origin(annotation)
+
+    if origin is not list:
+        return False
+
+    item_type = get_args(annotation)[0] if get_args(annotation) else None
+    if item_type is None:
+        return False
+    try:
+        return isinstance(item_type, type) and issubclass(item_type, BaseModel)
+    except TypeError:
+        return False
 
 
 def _extract_schema_name(schema: dict) -> str:

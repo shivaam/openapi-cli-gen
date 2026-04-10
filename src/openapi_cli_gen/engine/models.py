@@ -93,10 +93,12 @@ def _generate_and_cache(spec_path: Path, cache_file: Path) -> None:
             output_model_type=DataModelType.PydanticV2BaseModel,
             use_annotated=True,
             field_constraints=True,
+            snake_case_field=True,  # primaryKey -> primary_key for CLI kebab flags
             formatters=[],  # skip black/isort — we exec(), don't need pretty code
         )
-        # Strip future annotations so pydantic-settings can resolve types for CLI flags
-        code = code.replace("from __future__ import annotations\n", "")
+        # KEEP `from __future__ import annotations` — removing it breaks recursive
+        # types (self-referencing like ProgressTree). Instead, we rebuild all models
+        # after loading to resolve forward refs (see _load_from_cache).
         # Strip `discriminator='xxx'` from Field() calls. OpenAI has unions with
         # ambiguous discriminator values (two variants both with type='message') that
         # pydantic rejects. Without discriminator, pydantic tries each variant in order.
@@ -124,11 +126,22 @@ def _load_from_cache(cache_file: Path) -> dict[str, type[BaseModel]]:
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
 
-    return {
+    models = {
         name: obj
         for name, obj in vars(module).items()
         if isinstance(obj, type) and issubclass(obj, BaseModel) and obj is not BaseModel
     }
+
+    # Rebuild all models to resolve forward references. `from __future__ import
+    # annotations` makes all type hints strings, which need explicit resolution
+    # before pydantic-settings can introspect them for CLI flag generation.
+    for model in models.values():
+        try:
+            model.model_rebuild(_types_namespace=vars(module))
+        except Exception:
+            pass  # Skip models that can't be rebuilt (e.g., incomplete types)
+
+    return models
 
 
 def get_body_model(

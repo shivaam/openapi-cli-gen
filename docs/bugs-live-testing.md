@@ -1,159 +1,138 @@
-# Bugs from Live API Testing (v0.0.9)
+# Bugs from Live API Testing
 
-Comprehensive live test results against real APIs. Tracks what works and what doesn't.
+Live test results across real APIs. Updated as we find and fix issues.
 
-## Summary
+## Current Status (v0.0.11)
 
-| API | Commands tested | Pass | Fail | Notes |
-|---|---|---|---|---|
-| Apache Airflow 3.2.0 | 27 | 26 | 1 | Config 403 (perms, not our bug) |
-| OpenAI | 10 | 8 | 2 | Chat/Completions allOf, Assistants needs beta header |
-| Qdrant | 5 | 5 | 0 | Create/list/get/delete/search all work |
-| Meilisearch | 6 | 6 | 0 | Health/version/indexes/tasks/stats |
-| Petstore | 4 | 1 | 3 | Their server returns 500s |
-| Typesense | 0 | 0 | 1 | Model build fails with FieldInfo error |
-| Cat Fact | 3 | 3 | 0 | Random fact, breeds, version |
-| AdGuard Home | - | - | - | Not tested (needs web setup) |
+**Regression suite: 22/22 passing** (run `.venv/bin/python experiments/regression_test.py`)
 
-## Open Bugs
+| API | Pass | Total | Last tested |
+|---|---|---|---|
+| Qdrant (Docker) | 7 | 7 | v0.0.11 |
+| Meilisearch (Docker) | 7 | 7 | v0.0.11 |
+| OpenAI | 8 | 8 | v0.0.11 |
+| Apache Airflow 3.2.0 | 26 | 27 | v0.0.9 (1 is auth permissions) |
 
-### BUG-A: allOf composition not handled (CRITICAL)
+## Key Fixes Log
 
-**Impact:** Any request body schema that uses `allOf` to compose fields results in an empty command with no flags.
+### v0.0.11 — big round of fixes
 
-**Examples:**
-- OpenAI `Chat create-completion` — body uses `allOf: [$ref: CreateModelResponseProperties, { properties: { messages, model, ... } }]`
-- Many modern APIs use this pattern for inheritance
+**BUG-A: allOf body schemas missing all fields (FIXED)**
+- Symptom: OpenAI `Chat create-completion` showed no flags
+- Root cause: Our simple model builder didn't walk `allOf` composition. After jsonref resolved the refs, the original schema name was lost.
+- Fix: Added `load_raw_spec()` + `extract_body_schema_names()` to track $ref names before resolution. Parser now stores `body_ref_name` alongside schema. Registry looks up generated models by ref name.
 
-**Symptom:**
+**BUG-B: OpenAI discriminator unions break pydantic model loading (FIXED)**
+- Symptom: `TypeError: Value 'message' for discriminator 'type' mapped to multiple choices`
+- Root cause: OpenAI spec has ambiguous discriminated unions (two variants with `type: "message"`). Pydantic rejects at model creation.
+- Fix: Post-process generated code to strip `discriminator='type'` from Field() calls. Pydantic falls back to trying each variant in order — good enough for CLI use.
+
+**BUG-E: Recursive types broken by stripping future annotations (FIXED, regression)**
+- Symptom: `NameError: name 'ProgressTree' is not defined` for self-referencing types
+- Root cause: I stripped `from __future__ import annotations` to help pydantic-settings resolve types, but this broke recursive types.
+- Fix: Keep future annotations, call `model.model_rebuild()` on each class after loading with module namespace.
+
+**BUG-F: Complex union types can't be flag-ified (FIXED via fallback)**
+- Symptom: `Input should be a valid dictionary or instance of VectorParams`
+- Root cause: Generated models have exact types like `VectorParams | Record`. pydantic-settings can't build CLI flags for these.
+- Fix: Detect complex types (multi-BaseModel unions, lists of BaseModels, RootModels, BaseModels with nested complex types) and fall back to `str | None`. User passes JSON string which we parse before sending.
+
+**BUG-G: CamelCase aliases become CLI flags (FIXED)**
+- Symptom: Meilisearch showed `--primaryKey` instead of `--primary-key`
+- Root cause: `datamodel-code-generator --snake-case-field` renames fields to snake_case but sets `alias=original_name`. pydantic-settings uses the alias for CLI flags.
+- Fix: Strip `alias` from FieldInfo, keep `serialization_alias` so JSON serialization uses the original name. Path/query params also snake_cased with alias preserving original for URL substitution.
+
+**BUG-H: Defaults with wrong type break validation (FIXED)**
+- Symptom: `Input should be a valid string [type=string_type, input_value=True]`
+- Root cause: When falling back to str for complex types, we kept the original default (e.g., `True` bool). Pydantic rejected bool as string.
+- Fix: Drop the default entirely when falling back to str.
+
+### Earlier fixes (v0.0.6–v0.0.10)
+
+- **v0.0.10**: Enabled datamodel-code-generator for URL specs (downloads to cache)
+- **v0.0.9**: 5min httpx timeout for long-running ops (DALL-E)
+- **v0.0.9**: Drop defaults that equal spec default (enum-aware)
+- **v0.0.6**: Parse JSON strings in body fields (`--vectors '{"size":4}'`)
+- **v0.0.5**: `generate` command downloads URL specs
+- **v0.0.4**: Passthrough flags in run command (Typer context_settings)
+- **v0.0.3**: Add `--base-url` to run command
+- **v0.0.2**: Move typer + datamodel-code-generator to main deps
+
+## Open Issues
+
+### BUG-C: Typesense `FieldInfo object is not iterable`
+- **Status**: Still blocked
+- **Priority**: Medium
+- **Impact**: Typesense spec fails at build_registry step
+
+### BUG-I: pydantic-settings `BooleanOptionalAction nargs` error on very complex specs
+- **Status**: Workarounds apply (some fields fall back to str), but certain edge cases still hit it
+- **Priority**: Low (affects only deeply nested booleans in OpenAI-scale specs)
+- **Upstream**: Should file with pydantic-settings
+
+### BUG-D: OpenAI Assistants API needs `OpenAI-Beta` header
+- **Status**: Workaround needed — add `--header KEY=VALUE` flag
+- **Priority**: Low
+
+## Live Tested And Working (v0.0.11)
+
+### Qdrant (Docker localhost:6333)
 ```bash
-$ openapi-cli-gen run --spec <OpenAI> Chat create-completion --help
-usage: openapi-cli-gen [-h] [--output-format str]
-options:
-  -h, --help
-  --output-format
-```
-
-No `--messages`, `--model`, `--temperature` etc. because our model builder walks `properties` but doesn't recurse into `allOf`.
-
-**Fix options:**
-1. Add `allOf` handling to `_property_to_field` in `engine/models.py` — recursively merge properties from each `allOf` item
-2. Use `datamodel-code-generator` for URL specs too (we already do this for local files) — but see BUG-B
-
-**Priority:** CRITICAL — blocks all chat/completion APIs (the AI category)
-
----
-
-### BUG-B: datamodel-code-generator fails on OpenAI spec (discriminated unions)
-
-**Impact:** When we try to use datamodel-code-generator for URL specs (to handle `allOf`), OpenAI's spec fails during pydantic model instantiation.
-
-**Error:**
-```
-InputItem(RootModel[EasyInputMessage | InputMessage | OutputMessage | ...])
-    root: Annotated[..., Field(discriminator='type')]
-# Pydantic error: some variants don't have matching 'type' literal
-```
-
-**Root cause:** OpenAI's `InputItem` uses a discriminated union with `propertyName: type`, but some union members don't expose `type` as a Literal. Pydantic's strict discriminator validation rejects this at model creation time.
-
-**Fix options:**
-1. Strip discriminator metadata from generated code before `exec()` — risky
-2. Post-process the generated code to remove discriminator from problematic unions
-3. Use `generate_models_from_spec` with error recovery (return partial models)
-4. Report upstream to openai-openapi or datamodel-code-generator
-
-**Priority:** HIGH — blocks full OpenAI support
-
----
-
-### BUG-C: Typesense fails with `FieldInfo object is not iterable`
-
-**Impact:** Typesense spec can't be parsed by our tool at all.
-
-**Error:**
-```
-File "openapi_cli_gen/engine/builder.py", line 44, in build_cli
-    registry = build_registry(endpoints, generated_models=generated_models)
-TypeError: 'FieldInfo' object is not iterable
-```
-
-**Root cause:** Unknown — somewhere in our dispatch or registry building, a FieldInfo is being passed where a dict/list is expected. Likely a corner case in `exclude_from_body` or `_parse_json_strings`.
-
-**Priority:** MEDIUM — blocks Typesense demos
-
----
-
-### BUG-D: OpenAI Assistants needs beta header
-
-**Impact:** `openai Assistants list` returns 400 because OpenAI requires `OpenAI-Beta: assistants=v2` header.
-
-**Not our bug** — it's OpenAI's convention. But we should support custom headers per-endpoint (via extension in the spec or CLI flag).
-
-**Fix:** Add `--header KEY=VALUE` flag to the run command for injecting custom headers.
-
-**Priority:** LOW — workaround exists
-
----
-
-## What Works Well
-
-- **Simple CRUD**: GET/POST/PUT/PATCH/DELETE on typed schemas work great
-- **Nested objects (flat properties)**: dot-notation works at all depths
-- **Arrays/dicts/enums**: all handled by pydantic-settings
-- **JSON string parsing**: `--vectors '{"size": 4}'` gets parsed correctly
-- **Default value handling**: user-specified defaults aren't sent if they match spec default
-- **Auth via env vars**: Bearer token from `{NAME}_TOKEN` works
-- **Error responses**: 4xx/5xx shown cleanly with JSON formatting
-
-## Live Tested And Working (v0.0.9)
-
-### Airflow (live Breeze)
-```bash
-airflow Monitor get-health
-airflow Version get
-airflow DAG get-dags --limit 5
-airflow DAG get-dag --dag-id example_bash_operator
-airflow Pool get-pools
-airflow Connection post --connection-id my-db --conn-type postgres --host db.example.com
-airflow Connection patch --connection-id my-db --conn-type postgres --host new.example.com
-airflow Connection delete --connection-id my-db
-airflow Variable post --key my-var --value hello
-airflow DagRun trigger-dag-run --dag-id example_bash_operator --logical-date 2026-04-09T12:00:00+00:00
-```
-
-### OpenAI (live)
-```bash
-export CLI_TOKEN=sk-...
-openai Models list
-openai Models retrieve --model gpt-4o
-openai Embeddings create --input "Hello world" --model text-embedding-3-small --dimensions 8
-openai Moderations create --input "I love puppies"
-openai "Vector stores" create-vector-store --name my_store
-openai Files list
-openai Batch list-batches --limit 3
-openai Completions create --model gpt-3.5-turbo-instruct --prompt "Python is" --max-tokens 30
-openai Images create --prompt "A cat coding" --model dall-e-2 --size 256x256
-```
-
-### Qdrant (Docker local)
-```bash
-docker run -d -p 6333:6333 qdrant/qdrant
 qdrant Service root
 qdrant Service healthz
 qdrant Collections get-collections
 qdrant Collections create --collection-name test --vectors '{"size": 4, "distance": "Cosine"}'
 qdrant Collections get-collection --collection-name test
+qdrant Collections exists --collection-name test
 qdrant Collections delete --collection-name test
 ```
 
-### Meilisearch (Docker local)
+### Meilisearch (Docker localhost:7700)
 ```bash
-docker run -d -p 7700:7700 getmeili/meilisearch
 meili Health get
 meili Version get
 meili Indexes list
-meili Indexes create-index --uid movies --primary-key id
+meili Indexes create-index --uid my_index --primary-key id
 meili Stats get
-meili Tasks get-tasks --limit 3
+meili Tasks get-tasks
+meili Indexes delete-index --index-uid my_index
 ```
+
+### OpenAI (live API)
+```bash
+export CLI_TOKEN=sk-...
+openai Models list
+openai Models retrieve --model gpt-4o
+openai Embeddings create --input "Hello" --model text-embedding-3-small --dimensions 4
+openai Moderations create --input "I love cats"
+openai Completions create --model gpt-3.5-turbo-instruct --prompt "Python is" --max-tokens 10
+openai Chat create-completion --model gpt-4o-mini --messages '[{"role":"user","content":"Hi"}]'
+openai Files list
+openai "Vector stores" list-vector-stores
+```
+
+### Apache Airflow (live Breeze)
+```bash
+airflow Monitor get-health
+airflow Version get
+airflow DAG get-dags --limit 5
+airflow Pool get-pools
+airflow Connection post --connection-id my-db --conn-type postgres --host db.example.com
+airflow Connection patch --connection-id my-db --conn-type postgres --host new.example.com
+airflow Connection delete --connection-id my-db
+airflow DagRun trigger-dag-run --dag-id example_bash_operator --logical-date 2026-04-09T12:00:00+00:00
+```
+
+## Regression Test
+
+Run the full suite after any change:
+
+```bash
+export CLI_TOKEN=sk-...
+.venv/bin/python experiments/regression_test.py
+```
+
+Requires:
+- Qdrant: `docker run -d -p 6333:6333 qdrant/qdrant`
+- Meilisearch: `docker run -d -p 7700:7700 getmeili/meilisearch`
+- OpenAI: `CLI_TOKEN` env var
