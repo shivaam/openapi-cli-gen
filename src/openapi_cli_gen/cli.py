@@ -17,12 +17,19 @@ def generate(
     name: str = typer.Option(..., help="CLI/package name"),
     output: str = typer.Option(None, help="Output directory (default: ./<name>)"),
     base_url: str = typer.Option(None, help="Default API base URL for the generated CLI"),
+    description: str = typer.Option(None, help="PyPI project description (shown on the package page)"),
 ):
     """Generate a CLI package from an OpenAPI spec."""
     from openapi_cli_gen.codegen.generator import generate_package
 
     output_dir = output or f"./{name}"
-    result = generate_package(spec=spec, name=name, output_dir=output_dir, base_url=base_url)
+    result = generate_package(
+        spec=spec,
+        name=name,
+        output_dir=output_dir,
+        base_url=base_url,
+        description=description,
+    )
     typer.echo(f"Generated CLI package at: {result}")
 
 

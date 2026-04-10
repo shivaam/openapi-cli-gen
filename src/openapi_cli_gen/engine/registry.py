@@ -162,7 +162,14 @@ def _build_command_model(
     if ep.body_schema:
         # Prefer the original $ref name if available (preserves allOf/oneOf handling)
         schema_name = ep.body_ref_name or _extract_schema_name(ep.body_schema)
-        body_model = get_body_model(schema_name, generated_models, ep.body_schema, model_cache)
+        if ep.body_content_type == "multipart/form-data":
+            # Bypass datamodel-code-generator for multipart — dcg types binary
+            # fields as `bytes` which pydantic-settings can't flag-ify. The simple
+            # builder maps type:string (any format) → str, so users can pass paths.
+            from openapi_cli_gen.engine.models import schema_to_model
+            body_model = schema_to_model(schema_name, ep.body_schema, _model_cache=model_cache)
+        else:
+            body_model = get_body_model(schema_name, generated_models, ep.body_schema, model_cache)
         # Replace complex union types with str to keep CLI permissive.
         # Users can pass JSON strings that our builder will parse before sending.
         # Generated models from datamodel-code-generator preserve exact types

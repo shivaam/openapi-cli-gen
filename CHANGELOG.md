@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.0.14 (2026-04-10)
+
+**Auth + multipart body support. Unblocks AdGuard, Immich, and any API using HTTP Basic or multipart/form-data uploads.**
+
+### Added
+- **HTTP Basic auth support.** Specs with `http + basic` security schemes now work via `{PREFIX}_USERNAME` + `{PREFIX}_PASSWORD` env vars. Verified live against AdGuard Home (blocklist management, stats, filtering, clients, safebrowsing).
+- **Multipart/form-data request body support.** Endpoints with `multipart/form-data` content (e.g. file uploads) now expose every field as a CLI flag. Binary (`format: binary`) fields accept a file path which the tool opens and streams via httpx. Text fields are sent as regular form data. Verified live against Immich Server v2 uploading a real JPEG — asset ingested, file stored byte-perfect, metadata preserved, reads back via `Assets get-info`.
+- **Baseline README template for generated wrappers.** `generate` command now writes a `README.md` at the package root so PyPI pages aren't empty. If a hand-crafted README exists at `wrappers/<name>/README.md` in the openapi-cli-gen monorepo, it's copied; otherwise a Jinja2 template with install/setup/auth/discovery sections is rendered.
+- **Improved generated `pyproject.toml`.** Now includes `readme`, `license`, `authors`, `keywords`, `classifiers`, and project URLs pointing at the monorepo sub-path. PyPI pages for new wrappers render properly.
+- New `--description` flag on `openapi-cli-gen generate` to set the PyPI project description.
+
+### Fixed
+- **Security scheme name matching is now case-insensitive.** Specs declaring `"scheme": "Bearer"` (RFC 6750 form) instead of `"bearer"` (OpenAPI convention) previously fell through to whatever scheme came next in the iteration, causing silent auth failures. Immich was the repro — it uses `"Bearer"`, which meant the CLI was picking its `api_key` scheme instead and rejecting login tokens. Fixed by lowercasing before comparison.
+
+### Wrapper packages
+All 6 wrapper packages now ship with hand-written READMEs that include real tested command examples, command group tables, and positioning relative to official tools:
+- `openai-rest-cli`
+- `meilisearch-rest-cli`
+- `qdrant-rest-cli`
+- `typesense-rest-cli`
+- `adguard-home-cli`
+- `immich-rest-cli`
+
+### Regression
+36/36 passing across 7 live APIs (Qdrant × 2 suites, Meilisearch, Typesense, GitHub, OpenAI). Multipart support is additive — zero JSON-path regressions.
+
 ## v0.0.13 (2026-04-10)
 
 **Publishing infrastructure: generate command now produces installable packages.**

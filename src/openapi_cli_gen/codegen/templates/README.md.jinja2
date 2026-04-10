@@ -1,0 +1,78 @@
+# {{ name }}
+
+{{ description }}
+
+Generated from an OpenAPI spec using [openapi-cli-gen](https://github.com/shivaam/openapi-cli-gen).
+
+## Install
+
+```bash
+pipx install {{ name }}
+
+# Or with uv
+uv tool install {{ name }}
+```
+
+## Setup
+
+Point it at your API instance:
+
+```bash
+export {{ env_prefix }}_BASE_URL=https://your-api-host
+```
+
+### Authentication
+
+Depending on the spec's security scheme, set one of the following:
+
+- **Bearer token** (e.g. JWT):
+  ```bash
+  export {{ env_prefix }}_TOKEN=your-token
+  ```
+- **API key header**:
+  ```bash
+  export {{ env_prefix }}_API_KEY=your-key
+  ```
+- **HTTP Basic auth**:
+  ```bash
+  export {{ env_prefix }}_USERNAME=your-username
+  export {{ env_prefix }}_PASSWORD=your-password
+  ```
+
+The CLI auto-detects which scheme the spec declares and reads the matching env var.
+
+## Usage
+
+```bash
+# List top-level command groups
+{{ name }} --help
+
+# Commands in a group
+{{ name }} <group> --help
+
+# Flags for a specific command
+{{ name }} <group> <command> --help
+```
+
+## Output Formats
+
+Every command accepts `--output-format`:
+
+```bash
+{{ name }} <group> <command> --output-format json    # default
+{{ name }} <group> <command> --output-format table   # rich table
+{{ name }} <group> <command> --output-format yaml
+{{ name }} <group> <command> --output-format raw
+```
+
+## How It Works
+
+This package is a thin wrapper:
+- Embeds the OpenAPI spec (`spec.yaml`)
+- Delegates CLI generation to [openapi-cli-gen](https://github.com/shivaam/openapi-cli-gen) at runtime
+
+Since it's spec-driven, new endpoints show up automatically when the spec is regenerated — no manual wrapping to fall behind.
+
+## License
+
+MIT.

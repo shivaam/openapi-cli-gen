@@ -66,8 +66,13 @@ def extract_body_schema_names(raw_spec: dict) -> dict[tuple[str, str], str]:
             if not rb:
                 continue
             content = rb.get("content", {})
-            json_content = content.get("application/json", {})
-            schema = json_content.get("schema", {})
+            # Prefer JSON; fall back to multipart/form-data
+            if "application/json" in content:
+                schema = content["application/json"].get("schema", {})
+            elif "multipart/form-data" in content:
+                schema = content["multipart/form-data"].get("schema", {})
+            else:
+                schema = {}
             ref = schema.get("$ref")
             if ref and ref.startswith("#/components/schemas/"):
                 name = ref.split("/")[-1]

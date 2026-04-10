@@ -32,6 +32,8 @@ class EndpointInfo:
     query_params: list[ParamInfo] = field(default_factory=list)
     body_schema: dict | None = None
     body_ref_name: str | None = None  # Original $ref name (e.g., "CreateChatCompletionRequest")
+    body_content_type: str = "application/json"  # "application/json" or "multipart/form-data"
+    body_file_fields: set[str] = field(default_factory=set)  # field names with format: binary
 
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
@@ -76,11 +78,21 @@ def parse_spec(
                     query_params.append(param)
 
             body_schema = None
+            body_content_type = "application/json"
+            body_file_fields: set[str] = set()
             rb = operation.get("requestBody")
             if rb:
                 content = rb.get("content", {})
-                json_content = content.get("application/json", {})
-                body_schema = json_content.get("schema")
+                # Prefer JSON; fall back to multipart/form-data for file upload endpoints
+                if "application/json" in content:
+                    body_schema = content["application/json"].get("schema")
+                elif "multipart/form-data" in content:
+                    body_schema = content["multipart/form-data"].get("schema")
+                    body_content_type = "multipart/form-data"
+                    # Detect file fields: properties with format: binary
+                    for fname, prop in (body_schema or {}).get("properties", {}).items():
+                        if isinstance(prop, dict) and prop.get("format") == "binary":
+                            body_file_fields.add(fname)
 
             endpoints.append(EndpointInfo(
                 operation_id=op_id,
@@ -92,6 +104,8 @@ def parse_spec(
                 query_params=query_params,
                 body_schema=body_schema,
                 body_ref_name=body_ref_names.get((path, method)),
+                body_content_type=body_content_type,
+                body_file_fields=body_file_fields,
             ))
 
     return endpoints

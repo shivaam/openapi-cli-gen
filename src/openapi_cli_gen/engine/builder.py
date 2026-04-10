@@ -126,7 +126,39 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
         headers = auth_state.get_headers()
 
         with httpx.Client(timeout=300) as client:
-            if ep.method in ("post", "put", "patch"):
+            if ep.method in ("post", "put", "patch") and ep.body_content_type == "multipart/form-data":
+                # Multipart: split body into file fields (opened from path) and data fields.
+                # httpx handles boundary/Content-Type; don't pass a Content-Type header.
+                files_dict = {}
+                data_dict = {}
+                open_handles = []
+                try:
+                    for fname, value in body.items():
+                        if fname in ep.body_file_fields and value:
+                            file_path = Path(str(value))
+                            if not file_path.exists():
+                                print(f"Error: file not found for --{fname}: {value}")
+                                raise SystemExit(1)
+                            fh = file_path.open("rb")
+                            open_handles.append(fh)
+                            files_dict[fname] = (file_path.name, fh)
+                        elif value is not None:
+                            # Non-file multipart fields: stringify non-primitives as JSON
+                            if isinstance(value, (dict, list)):
+                                data_dict[fname] = json.dumps(value)
+                            else:
+                                data_dict[fname] = str(value)
+                    resp = client.request(
+                        ep.method.upper(), url,
+                        files=files_dict,
+                        data=data_dict,
+                        params=query_params,
+                        headers=headers,
+                    )
+                finally:
+                    for fh in open_handles:
+                        fh.close()
+            elif ep.method in ("post", "put", "patch"):
                 # For POST/PUT/PATCH: always send a JSON body (even empty {}) if the
                 # endpoint declares a body schema, otherwise APIs like Qdrant reject
                 # the request with "EOF while parsing JSON body".

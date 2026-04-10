@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 
 from openapi_cli_gen.spec.parser import SecuritySchemeInfo
@@ -30,16 +31,33 @@ def build_auth_config(
     cli_name: str,
     schemes: list[SecuritySchemeInfo],
 ) -> AuthState:
-    """Build auth state from security schemes + environment variables."""
+    """Build auth state from security schemes + environment variables.
+
+    Env var conventions (prefix = cli name, upper-cased, dashes to underscores):
+        bearer token:   {PREFIX}_TOKEN
+        apiKey header:  {PREFIX}_API_KEY
+        http basic:     {PREFIX}_USERNAME + {PREFIX}_PASSWORD
+    """
     prefix = cli_name.upper().replace("-", "_")
     state = AuthState()
 
     for scheme in schemes:
-        if scheme.type == "http" and scheme.scheme == "bearer":
+        # Normalize scheme name — RFC 6750 uses "Bearer" (capital), but OpenAPI specs
+        # often use "bearer". Match case-insensitively so both work.
+        scheme_name = (scheme.scheme or "").lower()
+        if scheme.type == "http" and scheme_name == "bearer":
             state._scheme_type = "bearer"
             token = os.environ.get(f"{prefix}_TOKEN")
             if token:
                 state._headers = {"Authorization": f"Bearer {token}"}
+            break
+        elif scheme.type == "http" and scheme_name == "basic":
+            state._scheme_type = "basic"
+            username = os.environ.get(f"{prefix}_USERNAME")
+            password = os.environ.get(f"{prefix}_PASSWORD")
+            if username is not None and password is not None:
+                encoded = base64.b64encode(f"{username}:{password}".encode()).decode()
+                state._headers = {"Authorization": f"Basic {encoded}"}
             break
         elif scheme.type == "apiKey" and scheme.location == "header":
             state._scheme_type = "apiKey"
