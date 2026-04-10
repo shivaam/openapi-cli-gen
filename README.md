@@ -104,6 +104,27 @@ export MYCLI_TOKEN=sk-xxx    # env var
 mycli users list --token sk-xxx  # or flag (overrides env)
 ```
 
+## Pre-Built CLIs
+
+We publish ready-to-use CLI wrappers for popular APIs, generated with this tool. Install one and start using it instantly:
+
+```bash
+# Full-coverage CLI for the OpenAI REST API
+pipx install openai-rest-cli
+export OPENAI_REST_CLI_TOKEN=sk-...
+openai-rest-cli Chat create-completion --model gpt-4o-mini --messages '[{"role":"user","content":"Hi"}]'
+```
+**[openai-rest-cli](https://github.com/shivaam/openai-rest-cli)** — every OpenAI endpoint (chat, embeddings, images, moderations, files, vector stores, batch) exposed as a typed command. [PyPI](https://pypi.org/project/openai-rest-cli/)
+
+```bash
+# Full-coverage CLI for Meilisearch
+pipx install meilisearch-rest-cli
+meilisearch-rest-cli Health get
+```
+**[meilisearch-rest-cli](https://github.com/shivaam/meilisearch-rest-cli)** — every Meilisearch REST endpoint, generated from their official OpenAPI spec. [PyPI](https://pypi.org/project/meilisearch-rest-cli/)
+
+More CLIs coming: Qdrant, Typesense, Airflow.
+
 ## Tested Against Real APIs
 
 **36/36 regression tests passing across 6 live APIs.** Full CRUD validated — not just reads.
