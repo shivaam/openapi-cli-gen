@@ -106,9 +106,42 @@ mycli users list --token sk-xxx  # or flag (overrides env)
 
 ## Tested Against Real APIs
 
-Live CRUD validated against **Apache Airflow 3.2.0** (111 endpoints) — create, update, delete connections, trigger DAG runs, manage pools and variables. All pass.
+**36/36 regression tests passing across 6 live APIs.** Full CRUD validated — not just reads.
 
-Also parsed: Petstore (19 endpoints), ReqRes (40), Redocly Museum (8), Open-Meteo (1). **182 endpoints across 6 APIs, all specs parse successfully.**
+| API | Type | Tests | Notes |
+|---|---|---|---|
+| **OpenAI** | AI/LLM | 8/8 | Models, Chat Completions, Embeddings, Images (DALL-E), Moderations, Files, Vector Stores |
+| **Qdrant** | Vector DB | 14/14 | Collections + Points CRUD, semantic search with real similarity scores |
+| **Meilisearch** | Search | 7/7 | Health, version, indexes, documents, tasks, stats |
+| **Typesense** | Search | 1/1 | Manually verified, health works live |
+| **GitHub** | Public | 6/6 | Meta, licenses, users, rate limit, zen, octocat |
+| **Apache Airflow 3.2.0** | Workflow | 26/27 | Full CRUD: create/patch/delete connections, trigger DAG runs |
+
+**Real commands that work today:**
+
+```bash
+# OpenAI Chat — one command, real GPT-4o-mini response
+openapi-cli-gen run --spec <openai-spec> Chat create-completion \
+  --model gpt-4o-mini \
+  --messages '[{"role":"user","content":"Hello"}]'
+
+# Qdrant vector search — create collection, insert vectors, semantic search
+openapi-cli-gen run --spec <qdrant-spec> --base-url http://localhost:6333 \
+  Collections create --collection-name pets --vectors '{"size": 4, "distance": "Cosine"}'
+
+openapi-cli-gen run --spec <qdrant-spec> --base-url http://localhost:6333 \
+  Search query-points --collection-name pets --query '[0.1, 0.2, 0.3, 0.4]' --limit 5
+
+# Airflow — trigger a DAG with datetime params
+openapi-cli-gen run --spec <airflow-spec> --base-url http://localhost:28080 \
+  DagRun trigger-dag-run --dag-id my_dag --logical-date 2026-04-09T12:00:00+00:00
+
+# GitHub — public API, no auth needed
+openapi-cli-gen run --spec <github-spec> --base-url https://api.github.com \
+  users users/get-by-username --username torvalds
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of bug fixes and improvements.
 
 ## Compared to Alternatives
 
