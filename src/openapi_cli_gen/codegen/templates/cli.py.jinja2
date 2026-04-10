@@ -1,9 +1,14 @@
+import os
 from pathlib import Path
 from openapi_cli_gen import build_cli
+
+# Base URL: override via {{ env_prefix }}_BASE_URL env var, fall back to spec default
+_base_url = os.environ.get("{{ env_prefix }}_BASE_URL"){% if base_url %} or "{{ base_url }}"{% endif %}
 
 app = build_cli(
     spec=Path(__file__).parent / "spec.yaml",
     name="{{ name }}",
+    base_url=_base_url,
 )
 
 

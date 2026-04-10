@@ -12,11 +12,25 @@ def generate_package(
     spec: str,
     name: str,
     output_dir: str,
+    base_url: str | None = None,
 ) -> Path:
-    """Generate a CLI package from an OpenAPI spec."""
-    output = Path(output_dir)
-    pkg_dir = output / "src" / name
+    """Generate a CLI package from an OpenAPI spec.
 
+    Args:
+        spec: Path or URL to the OpenAPI spec.
+        name: Package name (PyPI + CLI binary name). Can contain dashes.
+        output_dir: Where to write the package.
+        base_url: Optional default base URL for API calls. If None, the
+            generated CLI uses the first server from the spec.
+    """
+    output = Path(output_dir)
+
+    # Sanitize name for Python module/package directory.
+    # PyPI names can have dashes ('qdrant-api-cli') but Python packages can't.
+    # So `qdrant-api-cli` becomes module `qdrant_api_cli` but binary stays `qdrant-api-cli`.
+    module_name = name.replace("-", "_").replace(" ", "_")
+
+    pkg_dir = output / "src" / module_name
     pkg_dir.mkdir(parents=True, exist_ok=True)
 
     env = Environment(
@@ -24,8 +38,14 @@ def generate_package(
         keep_trailing_newline=True,
     )
 
+    # Derive env var prefix from package name (used for auth token, base URL)
+    env_prefix = module_name.upper()
+
     context = {
         "name": name,
+        "module_name": module_name,
+        "env_prefix": env_prefix,
+        "base_url": base_url,
         "openapi_cli_gen_version": openapi_cli_gen.__version__,
     }
 

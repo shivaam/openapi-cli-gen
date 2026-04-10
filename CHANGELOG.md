@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.0.13 (2026-04-10)
+
+**Publishing infrastructure: generate command now produces installable packages.**
+
+### Fixed
+- **BUG-L**: Package names with dashes (e.g., `qdrant-api-cli`) now work. Module directory is sanitized to `qdrant_api_cli` while keeping `qdrant-api-cli` as PyPI name and CLI binary.
+- **BUG-M**: Generated CLI now accepts `--base-url` flag at generate time, and supports `{NAME}_BASE_URL` env var at runtime.
+
+### Added
+- `--base-url` flag to `generate` command for pre-configuring API endpoints
+- `[tool.hatch.build.targets.wheel]` section in generated pyproject.toml for proper packaging
+- Environment variable support: generated CLIs read `{NAME}_BASE_URL` automatically
+
+### Verified end-to-end
+Generated `qdrant-api-cli` package, installed with `pip install -e .`, ran live commands against Docker Qdrant:
+```bash
+qdrant-api-cli Service root                    # Returns version info
+qdrant-api-cli Collections get-collections     # Returns real collections
+```
+
 ## v0.0.12 (2026-04-10)
 
 **35/35 regression tests passing across 6 live APIs.** Added Qdrant Points CRUD and GitHub public API to the regression suite. Typesense unblocked.
