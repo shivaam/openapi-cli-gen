@@ -66,7 +66,26 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
     ep = cmd_info.endpoint
 
     def cli_cmd(self):
+        import enum
+        from pydantic_core import PydanticUndefined
+
         data = self.model_dump(exclude_none=True, by_alias=True, mode="json")
+
+        # Remove fields that equal their default value (serialized form).
+        # pydantic-settings always sets all fields (from defaults), so exclude_unset
+        # doesn't work. We compare serialized values against the serialized default
+        # to drop unintended defaults that some APIs reject.
+        model_cls = type(self)
+        alias_to_default = {}
+        for name, info in model_cls.model_fields.items():
+            if info.default is PydanticUndefined or info.default is None:
+                continue
+            default_val = info.default
+            if isinstance(default_val, enum.Enum):
+                default_val = default_val.value
+            key = info.alias or info.serialization_alias or name
+            alias_to_default[key] = default_val
+        data = {k: v for k, v in data.items() if k not in alias_to_default or v != alias_to_default[k]}
 
         # Extract output format if present
         output_fmt = data.pop("output_format", "json")
@@ -100,7 +119,7 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
 
         headers = auth_state.get_headers()
 
-        with httpx.Client() as client:
+        with httpx.Client(timeout=300) as client:
             if ep.method in ("post", "put", "patch"):
                 resp = client.request(ep.method.upper(), url, json=body or None, params=query_params, headers=headers)
             else:
