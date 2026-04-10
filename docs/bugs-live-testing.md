@@ -2,18 +2,38 @@
 
 Live test results across real APIs. Updated as we find and fix issues.
 
-## Current Status (v0.0.11)
+## Current Status (v0.0.12)
 
-**Regression suite: 22/22 passing** (run `.venv/bin/python experiments/regression_test.py`)
+**Regression suite: 35/35 passing** (run `.venv/bin/python experiments/regression_test.py`)
 
 | API | Pass | Total | Last tested |
 |---|---|---|---|
-| Qdrant (Docker) | 7 | 7 | v0.0.11 |
-| Meilisearch (Docker) | 7 | 7 | v0.0.11 |
-| OpenAI | 8 | 8 | v0.0.11 |
+| Qdrant Collections | 7 | 7 | v0.0.12 |
+| Qdrant Points | 7 | 7 | v0.0.12 |
+| Meilisearch | 7 | 7 | v0.0.12 |
+| OpenAI | 8 | 8 | v0.0.12 |
+| GitHub public | 6 | 6 | v0.0.12 |
+| Typesense (not in regression yet) | — | — | v0.0.12 (manually verified) |
 | Apache Airflow 3.2.0 | 26 | 27 | v0.0.9 (1 is auth permissions) |
 
 ## Key Fixes Log
+
+### v0.0.12 — Qdrant Points CRUD and RootModel handling
+
+**BUG-J: RootModel body wrapper not unwrapped (FIXED)**
+- Symptom: Qdrant `Points upsert` sent `{"root": {"points": [...]}}` instead of `{"points": [...]}`
+- Root cause: When body is a RootModel, our tool left the `root` wrapper in JSON
+- Fix: If body dict has only a single `root` key, unwrap it before sending
+
+**BUG-K: Empty body for POST/PUT/PATCH (FIXED)**
+- Symptom: Qdrant `Points count` with no filters → 400 "EOF while parsing JSON"
+- Root cause: We were sending `null` body when user provided no fields
+- Fix: If endpoint declares a body schema and user sent nothing, send empty `{}` instead of null
+
+**BUG-C: Typesense FieldInfo error (FIXED AUTOMATICALLY)**
+- Was blocked in v0.0.9
+- Now works with v0.0.12 after the cumulative fixes in v0.0.11 (complex union fallback)
+- Typesense now parses, 15 groups visible, health check works live
 
 ### v0.0.11 — big round of fixes
 
@@ -59,11 +79,6 @@ Live test results across real APIs. Updated as we find and fix issues.
 - **v0.0.2**: Move typer + datamodel-code-generator to main deps
 
 ## Open Issues
-
-### BUG-C: Typesense `FieldInfo object is not iterable`
-- **Status**: Still blocked
-- **Priority**: Medium
-- **Impact**: Typesense spec fails at build_registry step
 
 ### BUG-I: pydantic-settings `BooleanOptionalAction nargs` error on very complex specs
 - **Status**: Workarounds apply (some fields fall back to str), but certain edge cases still hit it

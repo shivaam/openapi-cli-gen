@@ -176,6 +176,15 @@ def main():
     except Exception as e:
         print(f"Qdrant Points setup failed: {e}")
 
+    # === TYPESENSE (requires Docker) ===
+    runner.suite("Typesense")
+    try:
+        spec = "https://raw.githubusercontent.com/typesense/typesense-api-spec/master/openapi.yml"
+        app = build_cli(spec=spec, name="ts", base_url="http://localhost:8108")
+        runner.run("Health", app, ["health", "health"])
+    except Exception as e:
+        print(f"Typesense setup failed: {e}")
+
     # === GITHUB PUBLIC API (no auth needed) ===
     runner.suite("GitHub (public)")
     try:
