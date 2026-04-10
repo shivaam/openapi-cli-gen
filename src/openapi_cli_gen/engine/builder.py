@@ -7,7 +7,7 @@ from typing import Callable
 
 import httpx
 
-from openapi_cli_gen.spec.loader import load_spec
+from openapi_cli_gen.spec.loader import load_spec, load_raw_spec, extract_body_schema_names
 from openapi_cli_gen.spec.parser import parse_spec, extract_security_schemes
 from openapi_cli_gen.engine.models import generate_models_from_spec
 from openapi_cli_gen.engine.registry import build_registry, CommandInfo
@@ -33,7 +33,9 @@ def build_cli(
     """
     spec_path = str(spec)
     resolved = load_spec(spec_path)
-    endpoints = parse_spec(resolved)
+    raw = load_raw_spec(spec_path)
+    body_ref_names = extract_body_schema_names(raw)
+    endpoints = parse_spec(resolved, body_ref_names=body_ref_names)
     security_schemes = extract_security_schemes(resolved)
 
     # Generate models from spec (uses datamodel-code-generator with disk caching)
@@ -204,7 +206,9 @@ def build_command_group(
     """Build command group from spec. Returns the registry for programmatic use."""
     spec_path = str(spec)
     resolved = load_spec(spec_path)
-    endpoints = parse_spec(resolved)
+    raw = load_raw_spec(spec_path)
+    body_ref_names = extract_body_schema_names(raw)
+    endpoints = parse_spec(resolved, body_ref_names=body_ref_names)
     security_schemes = extract_security_schemes(resolved)
 
     generated_models = {}

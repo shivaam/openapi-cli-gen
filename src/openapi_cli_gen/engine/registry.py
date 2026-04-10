@@ -149,8 +149,8 @@ def _build_command_model(
 
     # Body schema → try generated models first, fall back to simple builder
     if ep.body_schema:
-        # Try to find the schema name from $ref or title
-        schema_name = _extract_schema_name(ep.body_schema)
+        # Prefer the original $ref name if available (preserves allOf/oneOf handling)
+        schema_name = ep.body_ref_name or _extract_schema_name(ep.body_schema)
         body_model = get_body_model(schema_name, generated_models, ep.body_schema, model_cache)
         for fname, finfo in body_model.model_fields.items():
             fields[fname] = (finfo.annotation, finfo)

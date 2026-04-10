@@ -97,6 +97,16 @@ def _generate_and_cache(spec_path: Path, cache_file: Path) -> None:
         )
         # Strip future annotations so pydantic-settings can resolve types for CLI flags
         code = code.replace("from __future__ import annotations\n", "")
+        # Strip `discriminator='xxx'` from Field() calls. OpenAI has unions with
+        # ambiguous discriminator values (two variants both with type='message') that
+        # pydantic rejects. Without discriminator, pydantic tries each variant in order.
+        import re
+        # Pattern 1: `Field(discriminator='type')` → `Field()`
+        code = re.sub(r"Field\(discriminator=['\"][^'\"]*['\"]\)", "Field()", code)
+        # Pattern 2: `, discriminator='type'` → `` (inside Field with other args)
+        code = re.sub(r",\s*discriminator=['\"][^'\"]*['\"]", "", code)
+        # Pattern 3: `discriminator='type',` → `` (at start of Field args)
+        code = re.sub(r"discriminator=['\"][^'\"]*['\"]\s*,\s*", "", code)
         cache_file.write_text(code)
     except ImportError:
         # datamodel-code-generator not installed — write empty module

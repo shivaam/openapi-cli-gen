@@ -31,14 +31,24 @@ class EndpointInfo:
     path_params: list[ParamInfo] = field(default_factory=list)
     query_params: list[ParamInfo] = field(default_factory=list)
     body_schema: dict | None = None
+    body_ref_name: str | None = None  # Original $ref name (e.g., "CreateChatCompletionRequest")
 
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
 
-def parse_spec(resolved_spec: dict) -> list[EndpointInfo]:
-    """Parse a resolved OpenAPI spec into a list of EndpointInfo."""
+def parse_spec(
+    resolved_spec: dict,
+    body_ref_names: dict[tuple[str, str], str] | None = None,
+) -> list[EndpointInfo]:
+    """Parse a resolved OpenAPI spec into a list of EndpointInfo.
+
+    Args:
+        resolved_spec: Spec with $ref resolved.
+        body_ref_names: Optional {(path, method): schema_name} from raw spec.
+    """
     endpoints = []
+    body_ref_names = body_ref_names or {}
 
     for path, path_item in resolved_spec.get("paths", {}).items():
         for method in HTTP_METHODS:
@@ -81,6 +91,7 @@ def parse_spec(resolved_spec: dict) -> list[EndpointInfo]:
                 path_params=path_params,
                 query_params=query_params,
                 body_schema=body_schema,
+                body_ref_name=body_ref_names.get((path, method)),
             ))
 
     return endpoints
