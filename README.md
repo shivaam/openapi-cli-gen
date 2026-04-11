@@ -33,10 +33,12 @@ Point at any public API — no setup, no files needed:
 
 ```bash
 # Get a random cat fact
-openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja Facts get-random
+openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja \
+  facts get-random
 
 # Browse cat breeds as a table
-openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja Breeds get --limit 5 --output-format table
+openapi-cli-gen run --spec https://catfact.ninja/docs --base-url https://catfact.ninja \
+  breeds get --limit 5 --output-format table
 ```
 ```
 ┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
@@ -106,24 +108,69 @@ mycli users list --token sk-xxx  # or flag (overrides env)
 
 ## Pre-Built CLIs
 
-We publish ready-to-use CLI wrappers for popular APIs, generated with this tool. Install one and start using it instantly:
+Six ready-to-use CLI wrappers, each generated from its API's official OpenAPI spec. Install one and start using it instantly:
 
 ```bash
-# Full-coverage CLI for the OpenAI REST API
+# OpenAI — every endpoint (chat, embeddings, images, audio, files,
+# vector stores, batch, fine-tuning, ...) as a typed subcommand
 pipx install openai-rest-cli
 export OPENAI_REST_CLI_TOKEN=sk-...
-openai-rest-cli Chat create-completion --model gpt-4o-mini --messages '[{"role":"user","content":"Hi"}]'
+openai-rest-cli chat create-completion --model gpt-4o-mini \
+  --messages '[{"role":"user","content":"Hi"}]'
 ```
-**[openai-rest-cli](https://github.com/shivaam/openai-rest-cli)** — every OpenAI endpoint (chat, embeddings, images, moderations, files, vector stores, batch) exposed as a typed command. [PyPI](https://pypi.org/project/openai-rest-cli/)
 
 ```bash
-# Full-coverage CLI for Meilisearch
-pipx install meilisearch-rest-cli
-meilisearch-rest-cli Health get
+# Qdrant — collections, points, search, snapshots, distributed
+pipx install qdrant-rest-cli
+qdrant-rest-cli collections get-collections
+qdrant-rest-cli search points --collection-name pets \
+  --vector '[0.1,0.2,0.3,0.4]' --limit 5 --with-payload true
 ```
-**[meilisearch-rest-cli](https://github.com/shivaam/meilisearch-rest-cli)** — every Meilisearch REST endpoint, generated from their official OpenAPI spec. [PyPI](https://pypi.org/project/meilisearch-rest-cli/)
 
-More CLIs coming: Qdrant, Typesense, Airflow.
+```bash
+# Meilisearch — indexes, documents, search, settings, tasks
+pipx install meilisearch-rest-cli
+meilisearch-rest-cli indexes list
+meilisearch-rest-cli documents replace --index-uid movies \
+  --root '[{"id":1,"title":"The Matrix"}]'
+```
+
+```bash
+# Typesense — collections, documents, search (72 search flags typed)
+pipx install typesense-rest-cli
+export TYPESENSE_REST_CLI_API_KEY=xyz
+typesense-rest-cli documents search-collection --collection-name books \
+  -q programmer --query-by title,author
+```
+
+```bash
+# AdGuard Home — filtering, clients, DHCP, rewrite, TLS, stats
+pipx install adguard-home-cli
+export ADGUARD_HOME_CLI_USERNAME=admin
+export ADGUARD_HOME_CLI_PASSWORD=xxx
+adguard-home-cli filtering add-url --name "OISD" --url "https://big.oisd.nl/" --no-whitelist
+```
+
+```bash
+# Immich — ~250 subcommands across 36 groups including multipart upload
+pipx install immich-rest-cli
+export IMMICH_REST_CLI_TOKEN=your-key
+immich-rest-cli assets upload --asset-data photo.jpg \
+  --device-asset-id "id-1" --device-id "script" \
+  --file-created-at 2026-04-10T00:00:00.000Z \
+  --file-modified-at 2026-04-10T00:00:00.000Z --filename photo.jpg
+```
+
+Each wrapper's source README (install, auth, real verified commands) lives under [wrappers/](wrappers/) in this monorepo.
+
+| Wrapper | PyPI | Source |
+|---|---|---|
+| openai-rest-cli | [pypi](https://pypi.org/project/openai-rest-cli/) | [wrappers/openai-rest-cli/](wrappers/openai-rest-cli/) |
+| qdrant-rest-cli | [pypi](https://pypi.org/project/qdrant-rest-cli/) | [wrappers/qdrant-rest-cli/](wrappers/qdrant-rest-cli/) |
+| meilisearch-rest-cli | [pypi](https://pypi.org/project/meilisearch-rest-cli/) | [wrappers/meilisearch-rest-cli/](wrappers/meilisearch-rest-cli/) |
+| typesense-rest-cli | [pypi](https://pypi.org/project/typesense-rest-cli/) | [wrappers/typesense-rest-cli/](wrappers/typesense-rest-cli/) |
+| adguard-home-cli | [pypi](https://pypi.org/project/adguard-home-cli/) | [wrappers/adguard-home-cli/](wrappers/adguard-home-cli/) |
+| immich-rest-cli | [pypi](https://pypi.org/project/immich-rest-cli/) | [wrappers/immich-rest-cli/](wrappers/immich-rest-cli/) |
 
 ## Tested Against Real APIs
 
@@ -132,30 +179,33 @@ More CLIs coming: Qdrant, Typesense, Airflow.
 | API | Type | Tests | Notes |
 |---|---|---|---|
 | **OpenAI** | AI/LLM | 8/8 | Models, Chat Completions, Embeddings, Images (DALL-E), Moderations, Files, Vector Stores |
-| **Qdrant** | Vector DB | 14/14 | Collections + Points CRUD, semantic search with real similarity scores |
-| **Meilisearch** | Search | 7/7 | Health, version, indexes, documents, tasks, stats |
-| **Typesense** | Search | 1/1 | Manually verified, health works live |
+| **Qdrant** (collections) | Vector DB | 7/7 | Service root, healthz, collections CRUD, exists |
+| **Qdrant Points** | Vector DB | 7/7 | Upsert, get, scroll, count, query-points, cleanup — vector search with real similarity scores |
+| **Meilisearch** | Search | 7/7 | Health, version, indexes, stats, tasks |
+| **Typesense** | Search | 1/1 | Health verified live; `documents index --root` + `search-collection -q ...` verified via wrapper |
 | **GitHub** | Public | 6/6 | Meta, licenses, users, rate limit, zen, octocat |
-| **Apache Airflow 3.2.0** | Workflow | 26/27 | Full CRUD: create/patch/delete connections, trigger DAG runs |
 
 **Real commands that work today:**
 
 ```bash
 # OpenAI Chat — one command, real GPT-4o-mini response
-openapi-cli-gen run --spec <openai-spec> Chat create-completion \
+openapi-cli-gen run --spec <openai-spec> chat create-completion \
   --model gpt-4o-mini \
   --messages '[{"role":"user","content":"Hello"}]'
 
 # Qdrant vector search — create collection, insert vectors, semantic search
 openapi-cli-gen run --spec <qdrant-spec> --base-url http://localhost:6333 \
-  Collections create --collection-name pets --vectors '{"size": 4, "distance": "Cosine"}'
+  collections create --collection-name pets \
+  --vectors '{"size": 4, "distance": "Cosine"}'
 
 openapi-cli-gen run --spec <qdrant-spec> --base-url http://localhost:6333 \
-  Search query-points --collection-name pets --query '[0.1, 0.2, 0.3, 0.4]' --limit 5
+  search query-points --collection-name pets \
+  --query '[0.1, 0.2, 0.3, 0.4]' --limit 5
 
-# Airflow — trigger a DAG with datetime params
-openapi-cli-gen run --spec <airflow-spec> --base-url http://localhost:28080 \
-  DagRun trigger-dag-run --dag-id my_dag --logical-date 2026-04-09T12:00:00+00:00
+# Meilisearch — add documents and search, verified against live 1.41
+openapi-cli-gen run --spec <meili-spec> --base-url http://localhost:7700 \
+  documents replace --index-uid movies \
+  --root '[{"id":1,"title":"The Matrix"}]'
 
 # GitHub — public API, no auth needed
 openapi-cli-gen run --spec <github-spec> --base-url https://api.github.com \
