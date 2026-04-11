@@ -1,6 +1,6 @@
 # openapi-cli-gen
 
-**Generate a full CLI from any OpenAPI spec in seconds. Nested request bodies become flat `--flags` automatically.**
+**Generate a typed Python CLI from any OpenAPI 3.x spec in seconds. Nested request bodies become flat `--flags` automatically.**
 
 [![PyPI](https://img.shields.io/pypi/v/openapi-cli-gen)](https://pypi.org/project/openapi-cli-gen/)
 [![Python](https://img.shields.io/pypi/pyversions/openapi-cli-gen)](https://pypi.org/project/openapi-cli-gen/)
