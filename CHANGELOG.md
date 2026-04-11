@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.0.18 (2026-04-10)
+
+**Error-path polish driven by the 2nd external blind test.** Two real UX issues found, both cheap to fix.
+
+### Fixed
+
+- **Network errors now print a one-line friendly message instead of a 60-line traceback.** Typing a wrong `BASE_URL`, hitting a stopped service, or losing network previously dumped `httpx.ConnectError: [Errno 61] Connection refused` followed by a full stack of httpcore + pydantic_settings frames. Now wrapped in `dispatch.py`: `httpx.ConnectError` / `ConnectTimeout` / `ReadTimeout` / `HTTPError` all get a specific short message + the underlying error. Biggest UX win in this release.
+
+- **Markdown stripped from upstream OpenAPI `description` fields in `--help` output.** OpenAI's `Chat create-completion` included raw markdown in its endpoint summary (`**Starting a new project?** We recommend trying [Responses](/docs/api-reference/responses)`) and in several nested field descriptions (`**NOTE:**`, `[tools](/docs/guides/...)`). The generator now runs descriptions through a markdown-stripping regex before they reach argparse. Recursively walks nested BaseModel types so that e.g. `--stream-options.include-usage` help text is also cleaned.
+
+### Not fixed
+
+- **`--q value` (long form) rejected for single-char field names.** This is an argparse convention (`--` prefix requires 2+ chars per PEP) — not a bug. Meilisearch's README already uses `-q` throughout. Documented limitation.
+
+### Regression
+
+36/36 across Qdrant × 2, Meilisearch, Typesense, OpenAI (8), GitHub (6). No changes to request-path behavior.
+
 ## v0.0.17 (2026-04-10)
 
 **Hotfix: preserve `serialization_alias` when forcing required body fields to CLI-optional.**

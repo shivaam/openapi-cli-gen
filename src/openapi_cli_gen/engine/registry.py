@@ -57,6 +57,86 @@ def build_registry(
     return registry
 
 
+def _clean_nested_model_descriptions(model_cls: type[BaseModel], _seen: set | None = None) -> None:
+    """Recursively strip markdown from descriptions on a BaseModel and its nested fields.
+
+    pydantic-settings reads field descriptions from nested BaseModels directly when
+    rendering --help. A one-level clean on the command model is not enough — we need
+    to walk into every nested BaseModel field and clean theirs too.
+
+    Mutates the model classes in place. Safe because (a) descriptions are purely
+    cosmetic, (b) we only strip markdown which is strictly better, and (c) the
+    transformation is idempotent.
+    """
+    if _seen is None:
+        _seen = set()
+    if model_cls in _seen:
+        return
+    _seen.add(model_cls)
+
+    try:
+        fields = model_cls.model_fields
+    except AttributeError:
+        return
+
+    for fname, finfo in list(fields.items()):
+        original = finfo.description
+        cleaned = _clean_description(original)
+        if cleaned != original:
+            finfo.description = cleaned
+        # Walk into nested BaseModel types (including Optional[Model], list[Model], union members)
+        from typing import get_args, get_origin, Union
+        from types import UnionType
+        anno = finfo.annotation
+        to_check = [anno]
+        # Unwrap container types
+        for _ in range(3):  # limit recursion depth on nested containers
+            new_to_check = []
+            for t in to_check:
+                origin = get_origin(t)
+                if origin is Union or isinstance(t, UnionType) or origin in (list, tuple, set, frozenset, dict):
+                    new_to_check.extend(get_args(t))
+                else:
+                    new_to_check.append(t)
+            to_check = new_to_check
+        for t in to_check:
+            try:
+                if isinstance(t, type) and issubclass(t, BaseModel) and t is not BaseModel:
+                    _clean_nested_model_descriptions(t, _seen)
+            except TypeError:
+                pass
+
+
+def _clean_description(desc: str | None) -> str | None:
+    """Strip Markdown syntax from OpenAPI `description` fields so argparse
+    `--help` output doesn't render things like `**bold**` or
+    `[Responses](/docs/api-reference/responses)` verbatim.
+
+    Keeps the text, drops the formatting. Truncates to a reasonable length
+    for CLI help rendering (argparse prints the full string if left unchecked).
+    """
+    if not desc:
+        return desc
+    s = str(desc)
+    # Strip `[text](url)` → `text`
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+    # Strip `**bold**`, `__bold__`, `*em*`, `_em_`
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"__([^_]+)__", r"\1", s)
+    s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", s)
+    s = re.sub(r"(?<!_)_([^_]+)_(?!_)", r"\1", s)
+    # Strip inline code `…`
+    s = re.sub(r"`([^`]+)`", r"\1", s)
+    # Strip headings `# Foo` (leading `#`s on a line)
+    s = re.sub(r"(?m)^\s*#+\s*", "", s)
+    # Collapse multiple whitespace/newlines into single spaces
+    s = re.sub(r"\s+", " ", s).strip()
+    # Truncate overly long descriptions — argparse help gets unreadable past ~300 chars
+    if len(s) > 300:
+        s = s[:297].rstrip() + "..."
+    return s
+
+
 def _normalize_group_name(tag: str) -> str:
     """Normalize an OpenAPI tag into a shell-friendly command group name.
 
@@ -263,6 +343,9 @@ def _build_command_model(
         # Generated models from datamodel-code-generator preserve exact types
         # (e.g., VectorParams | Record) which pydantic-settings can't flag-ify.
         for fname, finfo in body_model.model_fields.items():
+            # Strip markdown from upstream description fields so argparse --help
+            # doesn't render raw **bold** or [link](url) text.
+            cleaned_desc = _clean_description(finfo.description)
             annotation = finfo.annotation
             # Fall back to str for complex types that pydantic-settings can't flag-ify.
             # User passes JSON which our builder parses before sending.
@@ -270,7 +353,7 @@ def _build_command_model(
                 or _is_list_of_basemodel(annotation)
                 or _is_root_or_problematic_basemodel(annotation)):
                 # Drop the default entirely — it may not be a valid string
-                new_info = FieldInfo(default=None, description=finfo.description)
+                new_info = FieldInfo(default=None, description=cleaned_desc)
                 fields[fname] = (str | None, new_info)
                 continue
 
@@ -301,12 +384,16 @@ def _build_command_model(
             if existing_ser_alias is not None:
                 new_info = FieldInfo(
                     default=new_default,
-                    description=finfo.description,
+                    description=cleaned_desc,
                     serialization_alias=existing_ser_alias,
                 )
                 fields[fname] = (annotation, new_info)
             elif is_required:
-                new_info = FieldInfo(default=new_default, description=finfo.description)
+                new_info = FieldInfo(default=new_default, description=cleaned_desc)
+                fields[fname] = (annotation, new_info)
+            elif cleaned_desc != finfo.description:
+                # Description had markdown — rebuild FieldInfo to replace it
+                new_info = FieldInfo(default=finfo.default, description=cleaned_desc)
                 fields[fname] = (annotation, new_info)
             else:
                 fields[fname] = (annotation, finfo)
@@ -340,7 +427,14 @@ def _build_command_model(
     fields["output_format"] = (str, FieldInfo(default="json", description="Output format: json, table, yaml, raw"))
 
     model_name = f"Cmd_{ep.operation_id}"
-    return create_model(model_name, __doc__=ep.summary or ep.operation_id, **fields)
+    doc = _clean_description(ep.summary) or ep.operation_id
+    built = create_model(model_name, __doc__=doc, **fields)
+    # Walk nested BaseModel types and clean their field descriptions too —
+    # pydantic-settings reads nested descriptions directly for --help, so a
+    # top-level clean alone leaves markdown in nested flags like
+    # --stream-options.include-usage.
+    _clean_nested_model_descriptions(built)
+    return built
 
 
 def _is_complex_union(annotation) -> bool:

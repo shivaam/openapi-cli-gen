@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 
+import httpx
 from pydantic_settings import CliApp
 
 from openapi_cli_gen.engine.registry import CommandInfo
@@ -35,7 +36,29 @@ def dispatch(
     cmd_info = registry[group][command]
     flag_args = remaining[1:]
 
-    CliApp.run(cmd_info.model, cli_args=flag_args)
+    try:
+        CliApp.run(cmd_info.model, cli_args=flag_args)
+    except httpx.ConnectError as e:
+        # Typo'd base URL or stopped service. Give users a one-line hint
+        # instead of a 60-line httpx/pydantic_settings traceback.
+        prefix = name.upper().replace("-", "_")
+        print(
+            f"Error: could not connect to the API server. "
+            f"Is the service running and is {prefix}_BASE_URL set correctly?\n"
+            f"Details: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except httpx.ConnectTimeout as e:
+        print(f"Error: connection timed out. Check {name.upper().replace('-', '_')}_BASE_URL and network.\nDetails: {e}", file=sys.stderr)
+        sys.exit(1)
+    except httpx.ReadTimeout as e:
+        print(f"Error: the server took too long to respond.\nDetails: {e}", file=sys.stderr)
+        sys.exit(1)
+    except httpx.HTTPError as e:
+        # Catch-all for other httpx transport errors (DNS resolution, TLS, etc.)
+        print(f"Error: HTTP transport failed.\nDetails: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _print_root_help(
