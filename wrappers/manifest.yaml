@@ -31,7 +31,7 @@ wrappers:
     description: Full-coverage CLI for the Immich photo management API
 
   - name: qdrant-rest-cli
-    version: "0.1.3"
+    version: "0.1.4"
     spec_url: https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json
     base_url: http://localhost:6333
     repo: shivaam/qdrant-rest-cli
