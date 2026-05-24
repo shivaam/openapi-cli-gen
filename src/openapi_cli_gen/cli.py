@@ -46,6 +46,7 @@ def generate(
     ca_cert: str = typer.Option(None, help="Path to a CA bundle to use when fetching the spec"),
     client_cert: str = typer.Option(None, help="Path to a client certificate (PEM) for mTLS"),
     client_key: str = typer.Option(None, help="Path to the client certificate key (PEM)"),
+    version: str = typer.Option("0.1.0", "--wrapper-version", help="Version for the generated package"),
 ):
     """Generate a CLI package from an OpenAPI spec."""
     from openapi_cli_gen.codegen.generator import generate_package
@@ -61,6 +62,7 @@ def generate(
         description=description,
         verify_ssl=verify,
         client_cert=cert,
+        wrapper_version=version,
     )
     typer.echo(f"Generated CLI package at: {result}")
 

@@ -1,0 +1,45 @@
+# Manifest of all generated CLI wrappers.
+# Used by scripts/regenerate.py to bulk-regenerate and publish.
+# Bump 'version' before publishing a new release of the wrappers.
+
+wrappers:
+  - name: openai-rest-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/openai/openai-openapi/2025-03-21/openapi.yaml
+    base_url: https://api.openai.com/v1
+    repo: shivaam/openai-rest-cli
+    description: A full-coverage CLI for the OpenAI REST API
+
+  - name: meilisearch-rest-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/meilisearch/open-api/main/open-api.json
+    base_url: http://localhost:7700
+    repo: shivaam/meilisearch-rest-cli
+    description: Full-coverage CLI for the Meilisearch REST API
+
+  - name: adguard-home-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/openapi/openapi.yaml
+    repo: shivaam/adguard-home-cli
+    description: Full-coverage CLI for AdGuard Home
+
+  - name: immich-rest-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/immich-app/immich/main/open-api/immich-openapi-specs.json
+    base_url: http://localhost:2283/api
+    repo: shivaam/immich-rest-cli
+    description: Full-coverage CLI for the Immich photo management API
+
+  - name: qdrant-rest-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json
+    base_url: http://localhost:6333
+    repo: shivaam/qdrant-rest-cli
+    description: Full-coverage CLI for the Qdrant vector search API
+
+  - name: typesense-rest-cli
+    version: "0.1.3"
+    spec_url: https://raw.githubusercontent.com/typesense/typesense-api-spec/master/openapi.yml
+    base_url: http://localhost:8108
+    repo: shivaam/typesense-rest-cli
+    description: Full-coverage CLI for the Typesense search API

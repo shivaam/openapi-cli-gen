@@ -16,6 +16,7 @@ def generate_package(
     description: str | None = None,
     verify_ssl: bool | str = True,
     client_cert: tuple[str, str] | str | None = None,
+    wrapper_version: str = "0.1.0",
 ) -> Path:
     """Generate a CLI package from an OpenAPI spec.
 
@@ -57,6 +58,7 @@ def generate_package(
         "base_url": base_url,
         "description": description or f"A CLI for the {name} API, generated from its OpenAPI spec",
         "openapi_cli_gen_version": openapi_cli_gen.__version__,
+        "wrapper_version": wrapper_version,
     }
 
     for template_name, output_path in [
