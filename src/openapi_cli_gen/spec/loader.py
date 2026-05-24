@@ -8,11 +8,17 @@ import jsonref
 import yaml
 
 
-def load_spec(spec_path: str) -> dict:
+def load_spec(
+    spec_path: str,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
+) -> dict:
     """Load an OpenAPI spec from a file path or URL, resolve all $ref references.
 
     Args:
         spec_path: Path to YAML/JSON file, or HTTP(S) URL to an OpenAPI spec.
+        verify_ssl: SSL verification for URL specs. Passed straight to httpx.
+        client_cert: Client cert for mTLS when fetching URL specs.
 
     Returns:
         Fully resolved spec as a dict (all $ref inlined).
@@ -22,19 +28,24 @@ def load_spec(spec_path: str) -> dict:
         httpx.HTTPError: If URL fetch fails.
     """
     if spec_path.startswith(("http://", "https://")):
-        return _load_from_url(spec_path)
+        return _load_from_url(spec_path, verify_ssl=verify_ssl, client_cert=client_cert)
     return _load_from_file(spec_path)
 
 
-def load_raw_spec(spec_path: str) -> dict:
+def load_raw_spec(
+    spec_path: str,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
+) -> dict:
     """Load an OpenAPI spec from a file path or URL WITHOUT resolving refs.
 
     Used to extract $ref names before resolution.
     """
     if spec_path.startswith(("http://", "https://")):
-        resp = httpx.get(spec_path, follow_redirects=True, timeout=30)
-        resp.raise_for_status()
-        text = resp.text
+        with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+            resp = client.get(spec_path, follow_redirects=True)
+            resp.raise_for_status()
+            text = resp.text
         if spec_path.endswith((".yaml", ".yml")):
             return yaml.safe_load(text)
         try:
@@ -96,9 +107,14 @@ def _load_from_file(spec_path: str) -> dict:
     return jsonref.replace_refs(raw, base_uri=base_uri)
 
 
-def _load_from_url(url: str) -> dict:
-    resp = httpx.get(url, follow_redirects=True, timeout=30)
-    resp.raise_for_status()
+def _load_from_url(
+    url: str,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
+) -> dict:
+    with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+        resp = client.get(url, follow_redirects=True)
+        resp.raise_for_status()
 
     content_type = resp.headers.get("content-type", "")
     text = resp.text

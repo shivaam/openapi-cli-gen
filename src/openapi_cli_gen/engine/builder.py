@@ -20,6 +20,8 @@ def build_cli(
     spec: str | Path,
     name: str = "cli",
     base_url: str | None = None,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
 ) -> Callable:
     """Build a CLI application from an OpenAPI spec.
 
@@ -27,20 +29,28 @@ def build_cli(
         spec: Path to OpenAPI spec file or URL.
         name: CLI name (used for help text and env var prefix).
         base_url: Override the API base URL. If None, uses first server from spec.
+        verify_ssl: SSL certificate verification. ``True`` (default) validates
+            against the system CA store; ``False`` disables verification
+            (unsafe — use only for self-signed/internal endpoints); or pass a
+            path to a CA bundle file to verify against a custom CA.
+        client_cert: Client certificate for mTLS. Either a path to a combined
+            cert/key PEM file, or a ``(cert_path, key_path)`` tuple.
 
     Returns:
         A callable that accepts a list of args (or uses sys.argv[1:]).
     """
     spec_path = str(spec)
-    resolved = load_spec(spec_path)
-    raw = load_raw_spec(spec_path)
+    resolved = load_spec(spec_path, verify_ssl=verify_ssl, client_cert=client_cert)
+    raw = load_raw_spec(spec_path, verify_ssl=verify_ssl, client_cert=client_cert)
     body_ref_names = extract_body_schema_names(raw)
     endpoints = parse_spec(resolved, body_ref_names=body_ref_names)
     security_schemes = extract_security_schemes(resolved)
 
     # Generate models from spec (uses datamodel-code-generator with disk caching)
     # Works for both local files and URLs
-    generated_models = generate_models_from_spec(spec_path)
+    generated_models = generate_models_from_spec(
+        spec_path, verify_ssl=verify_ssl, client_cert=client_cert
+    )
 
     registry = build_registry(endpoints, generated_models=generated_models)
     auth_state = build_auth_config(name, security_schemes)
@@ -52,7 +62,10 @@ def build_cli(
     # Attach cli_cmd to each command model
     for group_cmds in registry.values():
         for cmd_info in group_cmds.values():
-            _attach_cli_cmd(cmd_info, base_url, auth_state)
+            _attach_cli_cmd(
+                cmd_info, base_url, auth_state,
+                verify_ssl=verify_ssl, client_cert=client_cert,
+            )
 
     def app(args: list[str] | None = None):
         if args is None:
@@ -62,7 +75,13 @@ def build_cli(
     return app
 
 
-def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
+def _attach_cli_cmd(
+    cmd_info: CommandInfo,
+    base_url: str,
+    auth_state,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
+) -> None:
     """Attach a cli_cmd method to the command model that makes the HTTP call."""
     ep = cmd_info.endpoint
 
@@ -133,7 +152,7 @@ def _attach_cli_cmd(cmd_info: CommandInfo, base_url: str, auth_state) -> None:
 
         headers = auth_state.get_headers()
 
-        with httpx.Client(timeout=300) as client:
+        with httpx.Client(timeout=300, verify=verify_ssl, cert=client_cert) as client:
             if ep.method in ("post", "put", "patch") and ep.body_content_type == "multipart/form-data":
                 # Multipart: split body into file fields (opened from path) and data fields.
                 # httpx handles boundary/Content-Type; don't pass a Content-Type header.
@@ -288,11 +307,13 @@ def build_command_group(
     spec: str | Path,
     name: str = "api",
     base_url: str | None = None,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
 ) -> dict[str, dict[str, CommandInfo]]:
     """Build command group from spec. Returns the registry for programmatic use."""
     spec_path = str(spec)
-    resolved = load_spec(spec_path)
-    raw = load_raw_spec(spec_path)
+    resolved = load_spec(spec_path, verify_ssl=verify_ssl, client_cert=client_cert)
+    raw = load_raw_spec(spec_path, verify_ssl=verify_ssl, client_cert=client_cert)
     body_ref_names = extract_body_schema_names(raw)
     endpoints = parse_spec(resolved, body_ref_names=body_ref_names)
     security_schemes = extract_security_schemes(resolved)
@@ -310,6 +331,9 @@ def build_command_group(
 
     for group_cmds in registry.values():
         for cmd_info in group_cmds.values():
-            _attach_cli_cmd(cmd_info, base_url, auth_state)
+            _attach_cli_cmd(
+                cmd_info, base_url, auth_state,
+                verify_ssl=verify_ssl, client_cert=client_cert,
+            )
 
     return registry

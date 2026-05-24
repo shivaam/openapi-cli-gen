@@ -5,10 +5,34 @@ from openapi_cli_gen import build_cli
 # Base URL: override via {{ env_prefix }}_BASE_URL env var, fall back to spec default
 _base_url = os.environ.get("{{ env_prefix }}_BASE_URL"){% if base_url %} or "{{ base_url }}"{% endif %}
 
+# SSL config — all optional, all driven by env vars so generated CLIs work the same way:
+#   {{ env_prefix }}_VERIFY_SSL=false  → skip cert verification (self-signed/internal)
+#   {{ env_prefix }}_CA_CERT=/path     → verify against a custom CA bundle
+#   {{ env_prefix }}_CLIENT_CERT=/path + {{ env_prefix }}_CLIENT_KEY=/path → mTLS
+_verify_env = os.environ.get("{{ env_prefix }}_VERIFY_SSL", "true").strip().lower()
+_ca_cert = os.environ.get("{{ env_prefix }}_CA_CERT")
+if _verify_env in ("false", "0", "no"):
+    _verify = False
+elif _ca_cert:
+    _verify = _ca_cert
+else:
+    _verify = True
+
+_client_cert_path = os.environ.get("{{ env_prefix }}_CLIENT_CERT")
+_client_key_path = os.environ.get("{{ env_prefix }}_CLIENT_KEY")
+if _client_cert_path and _client_key_path:
+    _client_cert = (_client_cert_path, _client_key_path)
+elif _client_cert_path:
+    _client_cert = _client_cert_path
+else:
+    _client_cert = None
+
 app = build_cli(
     spec=Path(__file__).parent / "spec.yaml",
     name="{{ name }}",
     base_url=_base_url,
+    verify_ssl=_verify,
+    client_cert=_client_cert,
 )
 
 

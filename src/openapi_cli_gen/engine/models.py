@@ -35,7 +35,11 @@ def to_snake_case(name: str) -> str:
     return s.lower()
 
 
-def generate_models_from_spec(spec_path: str) -> dict[str, type[BaseModel]]:
+def generate_models_from_spec(
+    spec_path: str,
+    verify_ssl: bool | str = True,
+    client_cert: tuple[str, str] | str | None = None,
+) -> dict[str, type[BaseModel]]:
     """Generate all Pydantic models from an OpenAPI spec file or URL.
 
     Uses datamodel-code-generator with disk caching.
@@ -47,8 +51,9 @@ def generate_models_from_spec(spec_path: str) -> dict[str, type[BaseModel]]:
     if spec_path.startswith(("http://", "https://")):
         import httpx
         try:
-            resp = httpx.get(spec_path, follow_redirects=True, timeout=30)
-            resp.raise_for_status()
+            with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+                resp = client.get(spec_path, follow_redirects=True)
+                resp.raise_for_status()
         except Exception:
             return {}
 
