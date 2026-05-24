@@ -106,6 +106,24 @@ export MYCLI_TOKEN=sk-xxx    # env var
 mycli users list --token sk-xxx  # or flag (overrides env)
 ```
 
+## HTTPS / Self-Signed Certs
+
+For APIs behind TLS with self-signed or internal certificates:
+
+```bash
+# Skip certificate verification
+export MYCLI_VERIFY_SSL=false
+
+# Or use a custom CA bundle
+export MYCLI_CA_CERT=/path/to/ca-bundle.pem
+
+# mTLS (client certificate)
+export MYCLI_CLIENT_CERT=/path/to/client.pem
+export MYCLI_CLIENT_KEY=/path/to/client-key.pem
+```
+
+The `generate` and `run` commands also accept `--no-verify-ssl`, `--ca-cert`, `--client-cert`, and `--client-key` flags.
+
 ## Pre-Built CLIs
 
 Six ready-to-use CLI wrappers, each generated from its API's official OpenAPI spec. Install one and start using it instantly:

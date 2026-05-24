@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.0.19 (2026-05-24)
+
+**SSL/TLS support for HTTPS endpoints.** Generated CLIs can now hit self-signed, internal, and mTLS endpoints.
+
+### Added
+- `--no-verify-ssl`, `--ca-cert`, `--client-cert`, `--client-key` flags on `generate` and `run` commands.
+- Generated CLIs read SSL config from env vars: `{PREFIX}_VERIFY_SSL`, `{PREFIX}_CA_CERT`, `{PREFIX}_CLIENT_CERT`, `{PREFIX}_CLIENT_KEY`.
+- `--wrapper-version` flag on `generate` for controlling the generated package version.
+- `wrappers/manifest.yaml` — single manifest for all 6 wrapper CLIs.
+- `scripts/regenerate.py` — bulk-regenerate, push, and publish all wrappers in one command.
+
+### Fixed
+- SSL cert params now use `httpx.Client()` context manager instead of `httpx.get()` (which doesn't accept `cert=`).
+
+### Verified
+Tested end-to-end against Qdrant Docker with self-signed TLS certificates. All 50 unit tests passing.
+
 ## v0.0.18 (2026-04-10)
 
 **Error-path polish driven by the 2nd external blind test.** Two real UX issues found, both cheap to fix.

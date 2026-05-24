@@ -33,6 +33,18 @@ export QDRANT_REST_CLI_API_KEY=your-api-key
 
 The CLI sends it as the `api-key` header automatically, matching Qdrant's security scheme.
 
+### HTTPS with Self-Signed Certs
+
+If your Qdrant instance uses TLS with a self-signed or internal certificate:
+
+```bash
+# Skip certificate verification
+export QDRANT_REST_CLI_VERIFY_SSL=false
+
+# Or point to your CA bundle
+export QDRANT_REST_CLI_CA_CERT=/path/to/ca-bundle.pem
+```
+
 ## Quick Start
 
 All commands below have been verified against a live Qdrant instance.
