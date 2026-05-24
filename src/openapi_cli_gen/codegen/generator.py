@@ -81,12 +81,10 @@ def generate_package(
     spec_dest = pkg_dir / "spec.yaml"
     if spec.startswith(("http://", "https://")):
         import httpx
-        resp = httpx.get(
-            spec, follow_redirects=True, timeout=30,
-            verify=verify_ssl, cert=client_cert,
-        )
-        resp.raise_for_status()
-        spec_dest.write_text(resp.text)
+        with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+            resp = client.get(spec, follow_redirects=True)
+            resp.raise_for_status()
+            spec_dest.write_text(resp.text)
     else:
         shutil.copy2(spec, spec_dest)
 

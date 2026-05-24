@@ -42,12 +42,10 @@ def load_raw_spec(
     Used to extract $ref names before resolution.
     """
     if spec_path.startswith(("http://", "https://")):
-        resp = httpx.get(
-            spec_path, follow_redirects=True, timeout=30,
-            verify=verify_ssl, cert=client_cert,
-        )
-        resp.raise_for_status()
-        text = resp.text
+        with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+            resp = client.get(spec_path, follow_redirects=True)
+            resp.raise_for_status()
+            text = resp.text
         if spec_path.endswith((".yaml", ".yml")):
             return yaml.safe_load(text)
         try:
@@ -114,11 +112,9 @@ def _load_from_url(
     verify_ssl: bool | str = True,
     client_cert: tuple[str, str] | str | None = None,
 ) -> dict:
-    resp = httpx.get(
-        url, follow_redirects=True, timeout=30,
-        verify=verify_ssl, cert=client_cert,
-    )
-    resp.raise_for_status()
+    with httpx.Client(verify=verify_ssl, cert=client_cert, timeout=30) as client:
+        resp = client.get(url, follow_redirects=True)
+        resp.raise_for_status()
 
     content_type = resp.headers.get("content-type", "")
     text = resp.text
