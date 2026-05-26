@@ -88,6 +88,18 @@
     <pre><code>SDK generator: produce code developers import.
 CLI generator: produce commands humans and scripts run.</code></pre>
 
+    <h2>Proof: Generated CLIs From Real APIs</h2>
+    <p>This is not only a design sketch. The generator has already been used to create standalone CLI wrappers for real APIs:</p>
+    <ul>
+      <li><a href="https://github.com/shivaam/openai-rest-cli">OpenAI REST CLI</a>: chat, embeddings, files, vector stores, batch, fine-tuning, images, audio, and more.</li>
+      <li><a href="https://github.com/shivaam/qdrant-rest-cli">Qdrant REST CLI</a>: collections, points, search, snapshots, and vector database operations.</li>
+      <li><a href="https://github.com/shivaam/meilisearch-rest-cli">Meilisearch REST CLI</a>: indexes, documents, search, settings, tasks, and API keys.</li>
+      <li><a href="https://github.com/shivaam/typesense-rest-cli">Typesense REST CLI</a>: collections, documents, search, aliases, keys, analytics, and conversations.</li>
+      <li><a href="https://github.com/shivaam/adguard-home-cli">AdGuard Home CLI</a>: filtering, clients, DHCP, rewrite rules, TLS, stats, and admin operations.</li>
+      <li><a href="https://github.com/shivaam/immich-rest-cli">Immich REST CLI</a>: assets, albums, libraries, users, search, tags, server config, and upload workflows.</li>
+    </ul>
+    <p>That matters because the value is not just "can we generate code?" The value is whether the generated surface can become a useful package someone can install, inspect, and script.</p>
+
     <h2>FastAPI Is A Natural Fit</h2>
     <p>FastAPI publishes an OpenAPI spec at <code>/openapi.json</code> by default. That means a running FastAPI app can become a CLI without adding a separate API description file:</p>
     <pre><code>openapi-cli-gen generate \

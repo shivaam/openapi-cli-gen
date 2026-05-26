@@ -79,6 +79,28 @@ CLI generator: produce commands humans and scripts run.
 
 Both can be useful. They just serve different moments.
 
+## Proof: Generated CLIs From Real APIs
+
+This is not only a design sketch. The generator has already been used to create
+standalone CLI wrappers for real APIs:
+
+- [OpenAI REST CLI](https://github.com/shivaam/openai-rest-cli): chat,
+  embeddings, files, vector stores, batch, fine-tuning, images, audio, and more.
+- [Qdrant REST CLI](https://github.com/shivaam/qdrant-rest-cli): collections,
+  points, search, snapshots, and vector database operations.
+- [Meilisearch REST CLI](https://github.com/shivaam/meilisearch-rest-cli):
+  indexes, documents, search, settings, tasks, and API keys.
+- [Typesense REST CLI](https://github.com/shivaam/typesense-rest-cli):
+  collections, documents, search, aliases, keys, analytics, and conversations.
+- [AdGuard Home CLI](https://github.com/shivaam/adguard-home-cli): filtering,
+  clients, DHCP, rewrite rules, TLS, stats, and admin operations.
+- [Immich REST CLI](https://github.com/shivaam/immich-rest-cli): assets,
+  albums, libraries, users, search, tags, server config, and upload workflows.
+
+That matters because the value is not just "can we generate code?" The value is
+whether the generated surface can become a useful package someone can install,
+inspect, and script.
+
 ## FastAPI Is A Natural Fit
 
 FastAPI publishes an OpenAPI spec at `/openapi.json` by default.
