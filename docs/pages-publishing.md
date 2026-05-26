@@ -1,6 +1,6 @@
 # Publishing Docs With GitHub Pages
 
-This repo can publish the `docs/` directory as a lightweight GitHub Pages site.
+This repo publishes the `docs/` directory as a lightweight GitHub Pages site.
 
 The goal is to create a durable, indexable surface for:
 
@@ -15,19 +15,17 @@ The goal is to create a durable, indexable surface for:
 - `docs/index.md`: site home.
 - `docs/guides/`: public guides.
 - `docs/blog/`: blog drafts and publishing pack.
-- `.github/workflows/pages.yml`: deploys `docs/` to GitHub Pages after pushes
-  to `main`.
+- GitHub Pages source: branch `main`, folder `/docs`.
 
 ## First-Time Setup
 
-After the workflow is pushed to `main`:
+After the docs are pushed to `main`:
 
 1. Open the GitHub repo settings.
 2. Go to **Pages**.
-3. Set source to **GitHub Actions**.
-4. Run the `Deploy docs to GitHub Pages` workflow, or push a docs change to
-   `main`.
-5. Wait for the workflow to publish the Pages URL.
+3. Set source to **Deploy from a branch**.
+4. Set branch to `main` and folder to `/docs`.
+5. Wait for GitHub Pages to publish the Pages URL.
 
 Expected URL:
 
@@ -48,7 +46,7 @@ Keep PyPI linked prominently from the docs homepage and README.
 
 ## Tracking
 
-After enabling Pages, add a row to `docs/marketing/tracking.md`:
+After enabling or changing Pages, add a row to `docs/marketing/tracking.md`:
 
 ```md
 | YYYY-MM-DD | GitHub Pages | Enabled docs site | https://shivaam.github.io/openapi-cli-gen/ | Pending indexing | Use as canonical blog/link target. |

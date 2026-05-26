@@ -29,9 +29,10 @@ paid experiments.
 | 2026-05-26 | blog | Drafted long-form post | `docs/blog/2026-05-26-openapi-spec-to-cli.md` | Ready for GitHub Pages/dev.to/Hashnode/GitHub Discussion after docs are pushed | Publish once repo links resolve publicly. |
 | 2026-05-26 | blog | Added platform publishing pack | `docs/blog/publishing-pack.md` | dev.to, Hashnode, GitHub Discussion, X, Reddit, and LinkedIn copy ready | Publish/cross-post after README/docs links are live. |
 | 2026-05-26 | docs/SEO | Added simple docs homepage for GitHub Pages | `docs/index.md` | Ready if Pages is enabled from `/docs`; live repo Pages currently disabled | Enable GitHub Pages after docs are pushed, then update repo homepage if desired. |
-| 2026-05-26 | GitHub Pages | Added Pages workflow and publishing runbook | `.github/workflows/pages.yml`, `docs/pages-publishing.md` | Workflow will publish `docs/` after push to `main` and Pages source is set to GitHub Actions | Push docs, enable Pages, then use Pages URL in blog/community links. |
+| 2026-05-26 | GitHub Pages | Added Pages publishing runbook | `docs/pages-publishing.md` | Pages should publish branch `main` folder `/docs` | Use Pages URL in blog/community links after it resolves. |
 | 2026-05-26 | GitHub Pages | Enabled live GitHub Pages with `build_type=workflow` via `gh api` | https://shivaam.github.io/openapi-cli-gen/ | Pages enabled; site waits for workflow/docs to be pushed to `main`; stars still 1 | Push `.github/workflows/pages.yml` and `docs/`, then run Pages workflow. |
 | 2026-05-26 | GitHub Pages | Switched Pages to branch mode and added static HTML entrypoints | https://shivaam.github.io/openapi-cli-gen/ | Added `docs/index.html` and `docs/blog/openapi-spec-to-cli.html` so Pages can serve without a build step | Push HTML entrypoints and verify the public URL no longer 404s. |
+| 2026-05-26 | GitHub Pages | Removed workflow deploy path after switching to branch-mode Pages | https://shivaam.github.io/openapi-cli-gen/ | Avoids queued duplicate workflow deploys; branch-mode Pages remains source of truth | Wait for branch Pages build to finish, then verify URL. |
 
 ## What To Check
 
