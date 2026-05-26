@@ -85,6 +85,21 @@
       padding: 10px 14px;
       text-decoration: none;
     }
+    .demo {
+      margin: 30px 0 26px;
+    }
+    .demo img {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: block;
+      height: auto;
+      width: 100%;
+    }
+    .caption {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -97,6 +112,11 @@
       <a href="https://pypi.org/project/openapi-cli-gen/">PyPI</a>
       <a href="blog/openapi-spec-to-cli.html">Blog post</a>
     </div>
+
+    <figure class="demo">
+      <img src="assets/openapi-cli-gen-demo.gif" alt="Terminal demo showing openapi-cli-gen generating and running a CLI from an OpenAPI spec" width="1200" height="675">
+      <figcaption class="caption">A spec becomes a Python CLI with typed commands and nested request-body flags.</figcaption>
+    </figure>
 
     <pre><code>pipx install openapi-cli-gen
 
