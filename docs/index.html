@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openapi-cli-gen: Generate Python CLIs from OpenAPI specs</title>
+  <meta name="description" content="Generate human-facing Python command line apps from OpenAPI, Swagger, and FastAPI specs. Nested request bodies become dot flags.">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f4;
+      --fg: #161616;
+      --muted: #5a5a5a;
+      --line: #d8d8d0;
+      --code: #202124;
+      --code-fg: #f8f8f2;
+      --accent: #0f766e;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111;
+        --fg: #f3f3f0;
+        --muted: #b8b8b0;
+        --line: #333;
+        --code: #050505;
+        --code-fg: #f8f8f2;
+        --accent: #5eead4;
+      }
+    }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+      margin: 0;
+    }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 56px 20px 72px;
+    }
+    h1 {
+      font-size: clamp(2.2rem, 6vw, 4.6rem);
+      line-height: 1;
+      margin: 0 0 18px;
+      letter-spacing: 0;
+    }
+    h2 {
+      border-top: 1px solid var(--line);
+      margin-top: 42px;
+      padding-top: 28px;
+    }
+    p, li {
+      font-size: 1.05rem;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 1.25rem;
+      max-width: 720px;
+    }
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.18em;
+    }
+    pre {
+      background: var(--code);
+      color: var(--code-fg);
+      overflow-x: auto;
+      padding: 18px;
+      border-radius: 8px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 28px 0;
+    }
+    .links a {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 14px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>openapi-cli-gen</h1>
+    <p class="lead">Generate human-facing Python CLIs from OpenAPI, Swagger, and FastAPI specs. Nested request bodies become dot flags like <code>--address.city NYC</code>.</p>
+
+    <div class="links">
+      <a href="https://github.com/shivaam/openapi-cli-gen">GitHub</a>
+      <a href="https://pypi.org/project/openapi-cli-gen/">PyPI</a>
+      <a href="blog/openapi-spec-to-cli.html">Blog post</a>
+    </div>
+
+    <pre><code>pipx install openapi-cli-gen
+
+openapi-cli-gen generate \
+  --spec https://api.example.com/openapi.json \
+  --name mycli</code></pre>
+
+    <h2>Start Here</h2>
+    <ul>
+      <li><a href="guides/generate-cli-from-openapi.md">Generate a CLI from an OpenAPI Spec</a></li>
+      <li><a href="guides/fastapi-openapi-cli.md">Generate a CLI from a FastAPI App</a></li>
+      <li><a href="guides/openapi-generator-vs-openapi-cli-gen.md">OpenAPI Generator vs openapi-cli-gen</a></li>
+    </ul>
+
+    <h2>Why This Exists</h2>
+    <p>OpenAPI specs are usually used to generate SDKs, server stubs, and docs. Those are useful, but they are not the only thing a spec can generate.</p>
+    <p>For support, ops, QA, demos, and internal admin workflows, a terminal command is often the better interface:</p>
+
+    <pre><code>mycli users create \
+  --name Jane \
+  --email jane@example.com \
+  --address.city NYC \
+  --address.state NY</code></pre>
+
+    <p>That is the lane for <code>openapi-cli-gen</code>: not another SDK directory, but commands humans and scripts can run.</p>
+
+    <h2>Feedback Wanted</h2>
+    <p>The most useful feedback is a real OpenAPI spec that makes generated CLIs awkward: unusual auth, nested bodies, arrays of objects, multipart uploads, unions, or very large schemas.</p>
+    <p><a href="https://github.com/shivaam/openapi-cli-gen/issues/new?template=spec-compatibility-report.yml">Open a spec compatibility report</a> or start from the <a href="https://github.com/shivaam/openapi-cli-gen">GitHub repository</a>.</p>
+  </main>
+</body>
+</html>

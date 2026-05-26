@@ -29,6 +29,7 @@ Project:
 ## Blog
 
 - [Turn an OpenAPI Spec Into a CLI People Can Actually Use](blog/2026-05-26-openapi-spec-to-cli.md)
+- [HTML version for GitHub Pages](blog/openapi-spec-to-cli.html)
 
 ## Why This Exists
 
