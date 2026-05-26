@@ -96,6 +96,14 @@ standalone CLI wrappers for real APIs:
   clients, DHCP, rewrite rules, TLS, stats, and admin operations.
 - [Immich REST CLI](https://github.com/shivaam/immich-rest-cli): assets,
   albums, libraries, users, search, tags, server config, and upload workflows.
+- [Open Wearables REST CLI](https://github.com/shivaam/open-wearables-rest-cli):
+  provider discovery, user sync/debug workflows, summaries, timeseries, and
+  webhooks.
+- [NeoDB REST CLI](https://github.com/shivaam/neodb-rest-cli): catalog search,
+  shelf, collection, review, tag, and personal data workflows.
+- [RustMailer REST CLI](https://github.com/shivaam/rustmailer-rest-cli):
+  self-hosted email operator workflows across accounts, mailboxes, messages,
+  hooks, and system endpoints.
 
 That matters because the value is not just "can we generate code?" The value is
 whether the generated surface can become a useful package someone can install,
